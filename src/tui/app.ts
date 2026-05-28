@@ -1,4 +1,5 @@
 import { Cc98Client } from "../api/client.js";
+import { loadConfig, type TuiConfig } from "../config.js";
 import { TokenStore } from "../storage/token-store.js";
 import { checkForUpdate } from "../update.js";
 import { appVersion } from "../version.js";
@@ -31,6 +32,7 @@ import { renderUbbToLines } from "./ubb-renderer.js";
 export async function runTui(): Promise<void> {
   const terminal = new Terminal();
   const tokenStore = new TokenStore();
+  const config = loadConfig();
   const rawClient = new Cc98Client({ tokenStore });
   const client = new CachedCc98Client(rawClient);
   let exitRequested = false;
@@ -74,7 +76,7 @@ export async function runTui(): Promise<void> {
         currentAbort = new AbortController();
         return currentAbort.signal;
       };
-      const render = () => terminal.render(draw(state, terminal.size()));
+      const render = () => terminal.render(draw(state, terminal.size(), config.tui));
       const load = async (force = false) => {
         const version = ++loadVersion;
         const signal = nextSignal();
@@ -429,7 +431,7 @@ export async function runTui(): Promise<void> {
             const floor = Number(state.topic.floorInput);
             state.topic.floorInput = "";
             if (Number.isInteger(floor) && floor > 0) {
-              void jumpToTopicFloor(client, state, floor, render, nextSignal());
+              void jumpToTopicFloor(client, state, floor, render, config.tui, nextSignal());
             }
             return;
           }
@@ -465,7 +467,7 @@ export async function runTui(): Promise<void> {
             state.scroll = Math.min(maxScroll, state.scroll + 1);
             render();
             if (wasAtEnd && state.topic?.hasMore && !state.loadingMore) {
-              void loadNextTopicPage(client, state, render, nextSignal(), true);
+              void loadNextTopicPage(client, state, render, config.tui, nextSignal(), true);
             }
             return;
           }
@@ -475,12 +477,12 @@ export async function runTui(): Promise<void> {
             return;
           }
           if (key === "n" || key === " ") {
-            void loadNextTopicPage(client, state, render, nextSignal());
+            void loadNextTopicPage(client, state, render, config.tui, nextSignal());
             return;
           }
           if (key === "r") {
             if (state.topic) {
-              void openTopic(client, state, state.topic.topicId, render, true, nextSignal());
+              void openTopic(client, state, state.topic.topicId, render, config.tui, true, nextSignal());
             }
             return;
           }
@@ -653,7 +655,7 @@ export async function runTui(): Promise<void> {
         if (key === "l" || key === "\x1b[C") {
           const selected = state.items[state.itemIndex];
           if (selected?.topicId !== undefined) {
-            void openTopic(client, state, selected.topicId, render, false, nextSignal());
+            void openTopic(client, state, selected.topicId, render, config.tui, false, nextSignal());
             return;
           }
           if (selected?.boardId !== undefined) {
@@ -671,7 +673,7 @@ export async function runTui(): Promise<void> {
         if (key === "\r") {
           const selected = state.items[state.itemIndex];
           if (selected?.topicId !== undefined) {
-            void openTopic(client, state, selected.topicId, render, false, nextSignal());
+            void openTopic(client, state, selected.topicId, render, config.tui, false, nextSignal());
             return;
           }
           if (selected?.boardId !== undefined) {
@@ -727,6 +729,7 @@ async function openTopic(
   state: TuiState,
   topicId: number,
   render: () => void,
+  config: TuiConfig,
   force = false,
   signal?: AbortSignal
 ): Promise<void> {
@@ -758,7 +761,7 @@ async function openTopic(
     ]);
     const topic = asObject(topicRaw);
     const posts = asArray(postsRaw);
-    const reader = buildTopicReader(topicId, topic, posts, 10);
+    const reader = buildTopicReader(topicId, topic, posts, 10, config);
     state.topic = reader;
     state.viewTitle = reader.title;
     state.status = reader.hasMore
@@ -968,6 +971,7 @@ async function loadNextTopicPage(
   client: CachedCc98Client,
   state: TuiState,
   render: () => void,
+  config: TuiConfig,
   signal?: AbortSignal,
   advanceAfterLoad = false
 ): Promise<void> {
@@ -981,7 +985,7 @@ async function loadNextTopicPage(
 
   try {
     const posts = asArray(await client.getTopicPosts(state.topic.topicId, state.topic.loaded, state.topic.size, false, signal));
-    const next = renderPosts(posts, Math.max(36, currentTopicWidthEstimate()), state.topic.lines.length);
+    const next = renderPosts(posts, Math.max(36, currentTopicWidthEstimate(config)), state.topic.lines.length);
     state.topic.lines.push(...next.lines);
     state.topic.posts.push(...next.posts);
     state.topic.imageCount += next.imageCount;
@@ -1005,25 +1009,25 @@ async function loadNextTopicPage(
   }
 }
 
-function currentTopicWidthEstimate(): number {
+function currentTopicWidthEstimate(config: TuiConfig): number {
   const width = process.stdout.columns || Number(process.env.COLUMNS) || 80;
   const sidebarWidth = width < 56 ? 0 : width < 90 ? 14 : 18;
   const sidebarRuleWidth = sidebarWidth > 0 ? 1 : 0;
-  if (width < 78) {
+  if (width < 78 || config.hideRightPanel) {
     return Math.max(24, width - sidebarWidth - sidebarRuleWidth);
   }
   const rightWidth = Math.floor(width * 0.30);
   return Math.max(24, width - sidebarWidth - sidebarRuleWidth - 1 - rightWidth);
 }
 
-function buildTopicReader(topicId: number, topic: Record<string, unknown>, posts: unknown[], size: number): TopicReaderState {
+function buildTopicReader(topicId: number, topic: Record<string, unknown>, posts: unknown[], size: number, config: TuiConfig): TopicReaderState {
   const title = String(topic.title ?? `#${topicId}`);
   const meta = [
     topic.userName,
     topic.replyCount !== undefined ? `${topic.replyCount} 回复` : undefined,
     topic.hitCount !== undefined ? `${topic.hitCount} 浏览` : undefined
   ].filter(Boolean).join(" · ");
-  const rendered = renderPosts(posts, currentTopicWidthEstimate());
+  const rendered = renderPosts(posts, currentTopicWidthEstimate(config));
 
   return {
     topicId,
@@ -1139,6 +1143,7 @@ async function jumpToTopicFloor(
   state: TuiState,
   floor: number,
   render: () => void,
+  config: TuiConfig,
   signal?: AbortSignal
 ): Promise<void> {
   const topic = state.topic;
@@ -1161,7 +1166,7 @@ async function jumpToTopicFloor(
 
   try {
     const posts = asArray(await client.getTopicPosts(topic.topicId, from, topic.size, false, signal));
-    const next = renderPosts(posts, Math.max(36, currentTopicWidthEstimate()), topic.lines.length);
+    const next = renderPosts(posts, Math.max(36, currentTopicWidthEstimate(config)), topic.lines.length);
     topic.lines.push(...next.lines);
     topic.posts.push(...next.posts);
     topic.posts.sort((left, right) => (left.floor ?? 0) - (right.floor ?? 0));
@@ -1340,9 +1345,18 @@ async function loadView(client: CachedCc98Client, view: ViewId, force: boolean, 
       const unreadObject = asObject(unread);
       const chats = asArray(recent);
       const userNames = await loadChatUserNames(client, chats, force, signal);
+      const unreadItems = unreadStats(unreadObject)
+        .filter((entry) => entry.detail !== "0" && entry.detail !== "-")
+        .map((entry) => ({
+          title: `未读 ${entry.title}`,
+          detail: entry.detail
+        }));
+      const chatItems = chats.length > 0
+        ? chats.map((chat) => chatItem(chat, userNames))
+        : [{ title: "暂无最近私信", meta: "recent-contact-users" }];
       return {
         title: "消息",
-        items: chats.length > 0 ? chats.map((chat) => chatItem(chat, userNames)) : [{ title: "暂无最近私信", meta: "recent-contact-users" }],
+        items: [...unreadItems, ...chatItems],
         stats: unreadStats(unreadObject),
         status: "消息：j/k 选择  l 打开会话  h 返回  r 刷新"
       };
@@ -1362,7 +1376,8 @@ async function loadView(client: CachedCc98Client, view: ViewId, force: boolean, 
           item("发帖数", meObject.postCount),
           item("财富", meObject.wealth),
           item("关注", meObject.followCount),
-          item("粉丝", meObject.fanCount)
+          item("粉丝", meObject.fanCount),
+          item("缓存文件", cacheStats.fileCacheEntries)
         ],
         stats: [
           { title: "登录状态", detail: "已登录" }

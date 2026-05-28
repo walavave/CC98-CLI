@@ -3,6 +3,7 @@ import {
   drawConfirmModal,
   drawLoginModal
 } from "./account-modal.js";
+import type { TuiConfig } from "../config.js";
 import { Canvas } from "./canvas.js";
 import { center, fill, length, min, percentage, rect, split } from "./layout.js";
 import { blank, cellWidth, fit, truncate, wrapText } from "./text.js";
@@ -19,7 +20,7 @@ import {
   type TuiState
 } from "./tui-model.js";
 
-export function draw(state: TuiState, size: { columns: number; rows: number }): string {
+export function draw(state: TuiState, size: { columns: number; rows: number }, config: TuiConfig): string {
   const width = Math.max(1, size.columns);
   const height = Math.max(1, size.rows);
   const canvas = new Canvas(width, height);
@@ -34,23 +35,27 @@ export function draw(state: TuiState, size: { columns: number; rows: number }): 
   }
 
   const root = rect(width, height);
-  const [headerArea, headerRuleArea, overviewArea, overviewRuleArea, bodyArea, footerRuleArea, statusArea] = split(root, "vertical", [
-    length(1),
-    length(1),
-    length(1),
-    length(1),
-    fill(),
-    length(1),
-    length(1)
-  ]);
+  const verticalLayout = config.hideTopChrome
+    ? [fill(), length(1), length(1)]
+    : [length(1), length(1), length(1), length(1), fill(), length(1), length(1)];
+  const areas = split(root, "vertical", verticalLayout);
+  const headerArea = config.hideTopChrome ? undefined : areas[0];
+  const headerRuleArea = config.hideTopChrome ? undefined : areas[1];
+  const overviewArea = config.hideTopChrome ? undefined : areas[2];
+  const overviewRuleArea = config.hideTopChrome ? undefined : areas[3];
+  const bodyArea = config.hideTopChrome ? areas[0] : areas[4];
+  const footerRuleArea = config.hideTopChrome ? areas[1] : areas[5];
+  const statusArea = config.hideTopChrome ? areas[2] : areas[6];
 
-  canvas.drawLines(headerArea, [header(headerArea.width, state)]);
-  canvas.horizontalRule(headerRuleArea);
-  canvas.drawLines(overviewArea, drawOverview(state, overviewArea.width, overviewArea.height));
-  canvas.horizontalRule(overviewRuleArea);
+  if (headerArea && headerRuleArea && overviewArea && overviewRuleArea) {
+    canvas.drawLines(headerArea, [header(headerArea.width, state)]);
+    canvas.horizontalRule(headerRuleArea);
+    canvas.drawLines(overviewArea, drawOverview(state, overviewArea.width, overviewArea.height));
+    canvas.horizontalRule(overviewRuleArea);
+  }
 
   const sidebarWidth = width < 56 ? 0 : width < 90 ? 14 : 18;
-  const showRight = width >= 78;
+  const showRight = width >= 78 && !config.hideRightPanel;
   const bodyColumns = showRight
     ? split(bodyArea, "horizontal", [
       length(sidebarWidth),
@@ -72,7 +77,7 @@ export function draw(state: TuiState, size: { columns: number; rows: number }): 
   if (sidebarArea.width > 0) {
     canvas.drawLines(sidebarArea, drawSidebar(state, sidebarArea.width, sidebarArea.height));
   }
-  canvas.drawLines(mainArea, drawMain(state, mainArea.width, mainArea.height));
+  canvas.drawLines(mainArea, drawMain(state, mainArea.width, mainArea.height, config));
   if (rightArea && rightRuleArea && rightArea.width > 0 && rightRuleArea.width > 0) {
     canvas.drawLines(rightArea, drawRight(state, rightArea.width, rightArea.height));
   }
@@ -146,7 +151,7 @@ function drawSidebar(state: TuiState, width: number, height: number): string[] {
   return rows;
 }
 
-function drawMain(state: TuiState, width: number, height: number): string[] {
+function drawMain(state: TuiState, width: number, height: number, config: TuiConfig): string[] {
   if (state.mode === "topic") {
     return drawTopic(state, width, height);
   }
@@ -184,7 +189,7 @@ function drawMain(state: TuiState, width: number, height: number): string[] {
     const index = scroll + offset;
     const active = index === state.itemIndex && (state.focus === "content" || state.mode === "settings");
     const marker = active ? theme.marker.selected : theme.marker.normal;
-    const title = fit(` ${marker} ${itemValue.title}`, width);
+    const title = fit(` ${marker} ${listItemTitle(itemValue, config)}`, width);
     rows.push(active ? selectedLine(title, width, state.focus === "content" || state.mode === "settings") : textStyle.muted(title));
 
     rows.push(itemValue.meta ? fit(textStyle.muted(`  ${itemValue.meta}`), width) : " ".repeat(width));
@@ -199,6 +204,13 @@ function drawMain(state: TuiState, width: number, height: number): string[] {
   }
 
   return rows.concat(blank(height - rows.length, width)).slice(0, height);
+}
+
+function listItemTitle(itemValue: { title: string; detail?: string }, config: TuiConfig): string {
+  if (!config.hideRightPanel || !itemValue.detail) {
+    return itemValue.title;
+  }
+  return `${itemValue.title}  ${truncate(itemValue.detail, 80)}`;
 }
 
 function getListScroll(state: TuiState, visibleCapacity: number): number {
