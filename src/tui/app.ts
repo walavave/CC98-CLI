@@ -298,11 +298,11 @@ export async function runTui(): Promise<void> {
             return;
           }
           if (key === "h" || key === "\x1b[D") {
-            if (state.loginForm.fieldIndex > 0) {
-              state.loginForm.fieldIndex -= 1;
-              render();
-              return;
-            }
+            state.modal = "account";
+            state.loginForm.error = undefined;
+            state.status = getStatus(state);
+            render();
+            return;
           }
           if (key === "l" || key === "\x1b[C") {
             if (state.loginForm.fieldIndex < 2) {
@@ -381,19 +381,31 @@ export async function runTui(): Promise<void> {
             render();
             return;
           }
-          if (key === "j" || key === "\x1b[B" || key === "k" || key === "\x1b[A" || key === "\t") {
-            state.confirmDialog.selectedIndex = state.confirmDialog.selectedIndex === 0 ? 1 : 0;
+          if (key === "j" || key === "\x1b[B" || key === "\t") {
+            state.confirmDialog.selectedIndex = Math.min(1, state.confirmDialog.selectedIndex + 1);
             render();
             return;
           }
-          if (key === "h" || key === "\x1b[D" || key === "\x1b") {
+          if (key === "k" || key === "\x1b[A") {
+            state.confirmDialog.selectedIndex = Math.max(0, state.confirmDialog.selectedIndex - 1);
+            render();
+            return;
+          }
+          if (key === "h" || key === "\x1b[D") {
             state.modal = null;
             state.confirmDialog = undefined;
             state.status = getStatus(state);
             render();
             return;
           }
-          if (key === "\r" || key === "l" || key === "\x1b[C") {
+          if (key === "\x1b") {
+            state.modal = null;
+            state.confirmDialog = undefined;
+            state.status = getStatus(state);
+            render();
+            return;
+          }
+          if (key === "\r") {
             if (state.confirmDialog.selectedIndex === 1) {
               state.modal = null;
               state.confirmDialog = undefined;
@@ -402,8 +414,26 @@ export async function runTui(): Promise<void> {
               return;
             }
 
-            const account = state.account;
+            const action = state.confirmDialog.action;
             state.modal = null;
+
+            if (action === "cache-cleanup") {
+              state.status = "正在清理缓存...";
+              render();
+              void client.clearCache().then(() => {
+                state.status = "缓存已清理";
+                void load(true);
+              }).catch((error: unknown) => {
+                state.error = error instanceof Error ? error.message : String(error);
+                state.status = "缓存清理失败";
+                render();
+              }).finally(() => {
+                state.confirmDialog = undefined;
+              });
+              return;
+            }
+
+            const account = state.account;
             state.status = account ? `正在退出 @${account}...` : "正在清除登录信息...";
             render();
 
@@ -551,15 +581,16 @@ export async function runTui(): Promise<void> {
               state.modal = "help";
               render();
             } else if (selected?.meta === "cache") {
-              state.status = "正在清理缓存...";
+              state.confirmDialog = {
+                title: "缓存清理",
+                detail: "清理过期文件缓存，并清空当前会话中的内存缓存？",
+                confirmLabel: "确认清理",
+                cancelLabel: "取消",
+                selectedIndex: 1,
+                action: "cache-cleanup"
+              };
+              state.modal = "confirm";
               render();
-              void client.clearCache().then(() => {
-                state.status = "缓存已清理";
-                void load(true);
-              }).catch(() => {
-                state.status = "缓存清理失败";
-                render();
-              });
             } else if (selected?.meta === "logout") {
               state.confirmDialog = {
                 title: "退出登录",

@@ -27,7 +27,7 @@ export interface ConfirmDialogState {
   confirmLabel: string;
   cancelLabel: string;
   selectedIndex: number;
-  action: "logout";
+  action: "logout" | "cache-cleanup";
 }
 
 export function createLoginForm(): LoginFormState {
@@ -113,19 +113,17 @@ export function drawConfirmModal(
   width: number,
   height: number
 ): string {
-  const confirm = dialog.selectedIndex === 0
-    ? textStyle.primaryBold(`> ${dialog.confirmLabel}`)
-    : textStyle.muted(dialog.confirmLabel);
-  const cancel = dialog.selectedIndex === 1
-    ? textStyle.primaryBold(`> ${dialog.cancelLabel}`)
-    : textStyle.muted(dialog.cancelLabel);
+  const confirm = dialog.selectedIndex === 0 ? `> ${dialog.confirmLabel}` : `  ${dialog.confirmLabel}`;
+  const cancel = dialog.selectedIndex === 1 ? `> ${dialog.cancelLabel}` : `  ${dialog.cancelLabel}`;
   const rows = [
     textStyle.dangerBold(dialog.title),
     "",
     dialog.detail,
     "",
-    `${confirm}  ${cancel}`,
-    textStyle.muted("Enter 确认  Esc 取消")
+    confirm,
+    cancel,
+    "",
+    textStyle.muted("j/k 选择  Enter 确认  Esc 取消")
   ];
 
   return drawFramedModal(baseLines, rows, width, height, 54);

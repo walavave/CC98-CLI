@@ -156,14 +156,19 @@ function drawSidebar(state: TuiState, width: number, height: number): string[] {
     const hint = width > 16 ? ` ${nav.hint}` : "";
     const text = fit(`${label}${hint}`, width);
     if (active && focused) {
-      rows.push(selectedLine(text, width, true));
+      rows.push(sidebarSelectedLine(text, width, true));
     } else if (active) {
-      rows.push(selectedLine(text, width, false));
+      rows.push(sidebarSelectedLine(text, width, false));
     } else {
       rows.push(`${textStyle.primary(label)}${textStyle.muted(fit(hint, Math.max(0, width - cellWidth(label))))}`);
     }
   }
   return rows;
+}
+
+function sidebarSelectedLine(content: string, width: number, focused: boolean): string {
+  const highlightWidth = Math.max(1, width - 1);
+  return selectedLine(content, highlightWidth, focused) + " ".repeat(width - highlightWidth);
 }
 
 function drawMain(state: TuiState, width: number, height: number, config: TuiConfig): TopicDrawResult {

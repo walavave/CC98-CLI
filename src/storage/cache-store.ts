@@ -139,18 +139,7 @@ export class CacheStore {
    * Clear all file cache entries
    */
   async clearFileCache(): Promise<void> {
-    try {
-      const files = await readdir(this.cacheDir);
-      await Promise.all(
-        files
-          .filter((f) => f.endsWith(".json"))
-          .map((f) => rm(join(this.cacheDir, f), { force: true }))
-      );
-    } catch (error: unknown) {
-      if (!isFileNotFound(error)) {
-        throw error;
-      }
-    }
+    await rm(this.cacheDir, { recursive: true, force: true });
   }
 
   /**
@@ -169,41 +158,38 @@ export class CacheStore {
     let kept = 0;
 
     try {
-      const files = await readdir(this.cacheDir);
+      const files = await listCacheFiles(this.cacheDir);
       const now = Date.now();
 
       const results = await Promise.allSettled(
-        files
-          .filter((f) => f.endsWith(".json"))
-          .map(async (f) => {
-            const filePath = join(this.cacheDir, f);
+        files.map(async (filePath) => {
+          try {
+            const fileStat = await stat(filePath);
+            const fileAge = now - fileStat.mtimeMs;
 
-            try {
-              // Check file modification time first (fast check)
-              const fileStat = await stat(filePath);
-              const fileAge = now - fileStat.mtimeMs;
-
-              if (fileAge > this.maxFileAge) {
-                await rm(filePath, { force: true });
-                return "removed-by-age" as const;
-              }
-
-              // Check if cache entry is expired
-              const raw = await readFile(filePath, "utf8");
-              const entry = JSON.parse(raw) as CacheEntry<unknown>;
-
-              if (entry.expiresAt <= now) {
-                await rm(filePath, { force: true });
-                return "removed-expired" as const;
-              }
-
-              return "kept" as const;
-            } catch {
-              // If we can't read/parse, remove it
-              await rm(filePath, { force: true }).catch(() => {});
-              return "removed-error" as const;
+            if (fileAge > this.maxFileAge) {
+              await rm(filePath, { force: true });
+              return "removed-by-age" as const;
             }
-          })
+
+            if (!filePath.endsWith(".json")) {
+              return "kept" as const;
+            }
+
+            const raw = await readFile(filePath, "utf8");
+            const entry = JSON.parse(raw) as CacheEntry<unknown>;
+
+            if (entry.expiresAt <= now) {
+              await rm(filePath, { force: true });
+              return "removed-expired" as const;
+            }
+
+            return "kept" as const;
+          } catch {
+            await rm(filePath, { force: true }).catch(() => {});
+            return "removed-error" as const;
+          }
+        })
       );
 
       for (const result of results) {
@@ -237,8 +223,8 @@ export class CacheStore {
     let fileCacheEntries = 0;
 
     try {
-      const files = await readdir(this.cacheDir);
-      fileCacheEntries = files.filter((f) => f.endsWith(".json")).length;
+      const files = await listCacheFiles(this.cacheDir);
+      fileCacheEntries = files.length;
     } catch {
       // Ignore errors
     }
@@ -286,6 +272,18 @@ export class CacheStore {
     const hash = createHash("sha256").update(key).digest("hex");
     return join(this.cacheDir, `${hash}.json`);
   }
+}
+
+async function listCacheFiles(root: string): Promise<string[]> {
+  const entries = await readdir(root, { withFileTypes: true });
+  const files = await Promise.all(entries.map(async (entry) => {
+    const fullPath = join(root, entry.name);
+    if (entry.isDirectory()) {
+      return listCacheFiles(fullPath);
+    }
+    return [fullPath];
+  }));
+  return files.flat();
 }
 
 function isFileNotFound(error: unknown): boolean {

@@ -7,10 +7,10 @@ export const theme = {
     primarySoft: fg(94, 180, 232),
     primaryBg: bg(0, 104, 176),
     panelBg: bg(5, 46, 74),
-    selectedBg: bg(0, 130, 202),
+    selectedBg: bg(181, 196, 255),
     textOnPrimary: fg(245, 250, 255),
     muted: fg(139, 152, 166),
-    rule: fg(52, 84, 112),
+    rule: fg(181, 196, 255),
     danger: fg(245, 101, 101),
     ok: fg(91, 207, 140)
   },
@@ -76,7 +76,7 @@ export function selectedLine(content: string, width: number, focused = true): st
   if (!focused) {
     return textStyle.primarySoft(fit(content, width));
   }
-  return styled(fit(content, width), `${theme.color.selectedBg}${theme.color.textOnPrimary}`);
+  return styled(fit(content, width), theme.color.selectedBg);
 }
 
 export function panelLine(content: string, width: number): string {
