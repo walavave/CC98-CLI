@@ -341,10 +341,25 @@ function isTopicDivider(content: string): boolean {
 }
 
 function drawStatusBar(state: TuiState, width: number): string {
-  const left = getStatus(state);
+  const notification = state.notification && state.notification.expiresAt > Date.now()
+    ? state.notification.message
+    : undefined;
+  const left = state.focus === "nav" && !notification
+    ? ""
+    : notification ?? (state.status || getStatus(state));
   const right = getKeyHints(state);
   const padding = Math.max(1, width - cellWidth(left) - cellWidth(right) - 2);
-  return fit(textStyle.muted(` ${left}${" ".repeat(padding)}${right} `), width);
+  const leftText = notification || isNotificationStatus(left)
+    ? textStyle.notice(` ${left}`)
+    : textStyle.muted(` ${left}`);
+  return fit(`${leftText}${textStyle.muted(`${" ".repeat(padding)}${right} `)}`, width);
+}
+
+function isNotificationStatus(status: string): boolean {
+  return status.startsWith("已") ||
+    status.startsWith("发现新版本 ") ||
+    status.startsWith("当前已是最新版本 ") ||
+    status === "缓存已清理";
 }
 
 function getKeyHints(state: TuiState): string {

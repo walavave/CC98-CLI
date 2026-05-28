@@ -11,6 +11,7 @@ export const theme = {
     textOnPrimary: fg(245, 250, 255),
     muted: fg(139, 152, 166),
     rule: fg(181, 196, 255),
+    notice: fg(245, 101, 101),
     danger: fg(245, 101, 101),
     ok: fg(91, 207, 140)
   },
@@ -59,6 +60,12 @@ export const textStyle = {
   },
   muted(content: string): string {
     return styled(content, theme.color.muted);
+  },
+  notice(content: string): string {
+    return styled(content, theme.color.notice);
+  },
+  noticeBold(content: string): string {
+    return styled(content, `${theme.color.notice}${ansi.bold}`);
   },
   danger(content: string): string {
     return styled(content, theme.color.danger);

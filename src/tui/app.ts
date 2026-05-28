@@ -80,10 +80,11 @@ export async function runTui(): Promise<void> {
         const version = ++loadVersion;
         const signal = nextSignal();
         const nav = navItems[state.navIndex];
+        const preserveSettingsSelection = nav.id === "settings" && state.mode === "settings";
         state.viewTitle = nav.label;
         state.loading = true;
         state.error = undefined;
-        state.itemIndex = 0;
+        state.itemIndex = preserveSettingsSelection ? state.itemIndex : 0;
         state.scroll = 0;
         state.mode = nav.id === "settings" && state.mode === "settings" ? "settings" : "list";
         if (state.mode === "settings") {

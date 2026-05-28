@@ -19,7 +19,7 @@ export function supportsImagePreview(): boolean {
 
 export async function loadImagePreview(url: string, columns: number, rows = imagePreviewRows): Promise<string | undefined> {
   const protocol = detectImageProtocol();
-  if (!protocol || !/^https?:\/\//i.test(url)) {
+  if (!protocol || !/^https?:\/\//i.test(url) || !isPreviewableImageUrl(url)) {
     return undefined;
   }
 
@@ -94,6 +94,14 @@ function imageCachePath(url: string): string {
   const pathname = new URL(url).pathname;
   const extension = extname(pathname).slice(0, 12) || ".img";
   return join(getCacheDir(), "images", `${hash}${extension}`);
+}
+
+function isPreviewableImageUrl(url: string): boolean {
+  try {
+    return /\.(?:png|jpe?g|gif|webp|bmp|svg|avif|heic|heif)$/i.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
 }
 
 function kittyImage(data: Buffer, rows: number): string {

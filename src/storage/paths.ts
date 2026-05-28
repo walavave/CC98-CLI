@@ -15,3 +15,7 @@ export function getTokenFilePath(): string {
 export function getCacheDir(): string {
   return join(getConfigDir(), "cache");
 }
+
+export function getDownloadsDir(): string {
+  return join(homedir(), "Downloads");
+}

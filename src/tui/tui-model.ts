@@ -35,6 +35,10 @@ export interface TuiState {
   loading: boolean;
   loadingMore: boolean;
   status: string;
+  notification?: {
+    message: string;
+    expiresAt: number;
+  };
   error?: string;
   account?: string;
   viewTitle: string;

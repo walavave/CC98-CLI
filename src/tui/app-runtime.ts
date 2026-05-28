@@ -15,6 +15,9 @@ import {
   restoreParentList
 } from "./app-data.js";
 import { getMenuItems } from "./interactions.js";
+import { fill, length, min, pad, percentage, rect, split } from "./layout.js";
+import { getSidebarWidth } from "./renderer.js";
+import { downloadUrlToDownloads } from "./downloads.js";
 import { getStatus, navItems, settingsItems, type TuiState } from "./tui-model.js";
 import type { CachedCc98Client } from "./cached-client.js";
 import type { Cc98Client } from "../api/client.js";
@@ -75,6 +78,9 @@ export function createMouseHandler(
     }
     if (event.kind === "up") {
       state.draggingSidebarDivider = false;
+      if (event.button === "left") {
+        void handleTopicClick(context, event, size.columns, size.rows);
+      }
     }
   };
 }
@@ -162,9 +168,7 @@ function handleMenuModal(context: RuntimeContext, key: string): void {
     } else if (selected?.action === "back") {
       if (state.mode === "topic") {
         abortCurrent();
-        state.mode = "list";
-        state.focus = "content";
-        state.status = getStatus(state);
+        leaveTopicMode(state);
         render();
       } else if (state.parentList) {
         abortCurrent();
@@ -178,6 +182,13 @@ function handleMenuModal(context: RuntimeContext, key: string): void {
     state.modal = null;
     render();
   }
+}
+
+function showNotification(state: TuiState, message: string, durationMs = 3200): void {
+  state.notification = {
+    message,
+    expiresAt: Date.now() + durationMs
+  };
 }
 
 function handleAccountModal(context: RuntimeContext, key: string): void {
@@ -214,7 +225,7 @@ function handleAccountModal(context: RuntimeContext, key: string): void {
     render();
     void tokenStore.useAccount(selected.account).then(() => {
       state.account = selected.account;
-      state.status = `已切换到 @${selected.account}`;
+      showNotification(state, `已切换到 @${selected.account}`);
       void load(true);
     }).catch((error: unknown) => {
       state.error = error instanceof Error ? error.message : String(error);
@@ -292,7 +303,7 @@ function handleLoginModal(context: RuntimeContext, key: string): void {
       await refreshAccounts(state, tokenStore);
       state.loginForm = createLoginForm();
       state.modal = null;
-      state.status = `已登录为 ${typeof me.name === "string" ? me.name : username}`;
+      showNotification(state, `已登录为 ${typeof me.name === "string" ? me.name : username}`);
       await load(true);
     }).catch((error: unknown) => {
       state.loginForm.submitting = false;
@@ -350,7 +361,7 @@ function handleConfirmModal(context: RuntimeContext, key: string): void {
     state.status = "正在清理缓存...";
     render();
     void client.clearCache().then(() => {
-      state.status = "缓存已清理";
+      showNotification(state, "缓存已清理");
       void load(true);
     }).catch((error: unknown) => {
       state.error = error instanceof Error ? error.message : String(error);
@@ -374,7 +385,7 @@ function handleConfirmModal(context: RuntimeContext, key: string): void {
     }
     state.account = await tokenStore.getCurrentAccountName();
     await refreshAccounts(state, tokenStore);
-    state.status = "已退出登录";
+    showNotification(state, "已退出登录");
     await load(true);
   })().catch((error: unknown) => {
     state.error = error instanceof Error ? error.message : String(error);
@@ -423,9 +434,7 @@ function handleTopicMode(context: RuntimeContext, key: string, keyAction: string
   }
   if (key === "h" || key === "\x1b[D") {
     abortCurrent();
-    state.mode = "list";
-    state.focus = "content";
-    state.status = getStatus(state);
+    leaveTopicMode(state);
     render();
     return;
   }
@@ -465,6 +474,106 @@ function handleTopicMode(context: RuntimeContext, key: string, keyAction: string
     state.menuItems = getMenuItems(state);
     state.menuIndex = 0;
     render();
+  }
+}
+
+function leaveTopicMode(state: TuiState): void {
+  state.mode = "list";
+  state.focus = "content";
+  state.viewTitle = state.currentBoard?.title ?? state.currentChat?.title ?? navItems[state.navIndex]?.label ?? state.viewTitle;
+  state.status = getStatus(state);
+}
+
+async function handleTopicClick(
+  context: RuntimeContext,
+  event: MouseEvent,
+  columns: number,
+  rows: number
+): Promise<void> {
+  const { state, render } = context;
+  if (state.mode !== "topic" || !state.topic || state.loading || state.error) {
+    return;
+  }
+
+  const mainArea = getMainAreaRect(columns, rows, context.config, state.sidebarWidth);
+  if (!withinRect(event.column, event.row, mainArea)) {
+    return;
+  }
+
+  const bodyRow = event.row - (mainArea.y + 1);
+  const bodyLineIndex = bodyRow - 3;
+  if (bodyLineIndex < 0) {
+    return;
+  }
+
+  const absoluteLine = state.scroll + bodyLineIndex;
+  const lineEntry = state.topic.posts
+    .flatMap((post) => post.lines)
+    .find((entry) => entry.line === absoluteLine);
+  const url = lineEntry?.linkUrl ?? lineEntry?.imageUrl;
+  if (!url) {
+    return;
+  }
+
+  state.status = `正在下载 ${shortUrl(url)}...`;
+  render();
+
+  try {
+    const savedPath = await downloadUrlToDownloads(url);
+    showNotification(state, `已下载到 ${savedPath}`);
+  } catch (error) {
+    state.status = error instanceof Error ? error.message : "下载失败";
+  } finally {
+    render();
+  }
+}
+
+function getMainAreaRect(
+  columns: number,
+  rows: number,
+  config: TuiConfig,
+  sidebarWidthOverride?: number
+): { x: number; y: number; width: number; height: number } {
+  const width = Math.max(1, columns);
+  const height = Math.max(1, rows);
+  const outer = rect(width, Math.max(0, height - 1));
+  const root = pad(outer, 1);
+  const verticalLayout = config.hideTopChrome
+    ? [fill()]
+    : [length(1), length(1), length(1), length(1), fill()];
+  const areas = split(root, "vertical", verticalLayout);
+  const bodyArea = config.hideTopChrome ? areas[0] : areas[4];
+  const sidebarWidth = getSidebarWidth(width, sidebarWidthOverride);
+  const showRight = width >= 78 && !config.hideRightPanel;
+  const bodyColumns = showRight
+    ? split(bodyArea, "horizontal", [
+      length(sidebarWidth),
+      length(sidebarWidth > 0 ? 1 : 0),
+      min(24),
+      length(1),
+      percentage(30)
+    ])
+    : split(bodyArea, "horizontal", [
+      length(sidebarWidth),
+      length(sidebarWidth > 0 ? 1 : 0),
+      fill()
+    ]);
+  return bodyColumns[2];
+}
+
+function withinRect(column: number, row: number, area: { x: number; y: number; width: number; height: number }): boolean {
+  const x = column - 1;
+  const y = row - 1;
+  return x >= area.x && x < area.x + area.width && y >= area.y && y < area.y + area.height;
+}
+
+function shortUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    const fileName = url.pathname.split("/").filter(Boolean).at(-1) ?? url.host;
+    return `${url.host}/${fileName}`;
+  } catch {
+    return value;
   }
 }
 
@@ -544,7 +653,7 @@ function handleSettingsMode(context: RuntimeContext, key: string): void {
     state.status = "正在检查 GitHub Release...";
     render();
     void checkForUpdate().then((result) => {
-      state.status = result.message;
+      showNotification(state, result.message);
       render();
     }).catch((error: unknown) => {
       state.status = error instanceof Error ? error.message : "检查更新失败";

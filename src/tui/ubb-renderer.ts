@@ -24,9 +24,13 @@ export function renderUbbToLines(content: string, width: number, options: Render
 
   text = text.replace(/\[upload(?:=[^\]]*)?\]([\s\S]*?)\[\/upload\]/gi, (_match, url: string) => {
     const cleanUrl = normalizeImageUrl(url);
-    images.push(cleanUrl);
-    const index = images.length;
-    return imageBlock(index, cleanUrl, options.imagePreviewRows);
+    if (isPreviewableImageUrl(cleanUrl)) {
+      images.push(cleanUrl);
+      const index = images.length;
+      return imageBlock(index, cleanUrl, options.imagePreviewRows);
+    }
+    links.push(cleanUrl);
+    return `[link ${links.length}: ${shortUrl(cleanUrl)}]`;
   });
 
   text = text.replace(/<img\b[^>]*\bsrc=(["']?)([^"'\s>]+)\1[^>]*>/gi, (_match, _quote: string, url: string) => {
@@ -195,6 +199,15 @@ function shortUrl(value: string): string {
     return `${url.host}/${fileName}`;
   } catch {
     return value;
+  }
+}
+
+function isPreviewableImageUrl(value: string): boolean {
+  try {
+    const pathname = new URL(value).pathname.toLowerCase();
+    return /\.(?:png|jpe?g|gif|webp|bmp|svg|avif|heic|heif)$/i.test(pathname);
+  } catch {
+    return false;
   }
 }
 
