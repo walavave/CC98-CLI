@@ -1,5 +1,7 @@
 import { Cc98Client } from "../api/client.js";
+import type { WebVpnOptions } from "../api/types.js";
 import { loadConfig, type TuiConfig } from "../config.js";
+import { VpnStore } from "../storage/vpn-store.js";
 import { TokenStore } from "../storage/token-store.js";
 import { checkForUpdate } from "../update.js";
 import { appVersion } from "../version.js";
@@ -10,6 +12,7 @@ import {
 } from "./account-modal.js";
 import { CachedCc98Client } from "./cached-client.js";
 import { imagePreviewRows, loadImagePreview, supportsImagePreview } from "./image-preview.js";
+import { loadTuiKeymap } from "./keymap.js";
 import { draw } from "./renderer.js";
 import {
   currentTopicPost,
@@ -28,13 +31,25 @@ import {
 } from "./tui-model.js";
 import { Terminal } from "./terminal.js";
 import { theme } from "./theme.js";
-import { renderUbbToLines } from "./ubb-renderer.js";
+import { renderMarkdownToLines, renderUbbToLines } from "./ubb-renderer.js";
 
 export async function runTui(): Promise<void> {
   const terminal = new Terminal();
   const tokenStore = new TokenStore();
+  const vpnStore = new VpnStore();
   const config = loadConfig();
-  const rawClient = new Cc98Client({ tokenStore });
+  const keymap = loadTuiKeymap();
+  const vpnConfig = await vpnStore.getConfig();
+  const webVpnOptions: WebVpnOptions | undefined =
+    vpnConfig.mode === "direct"
+      ? { mode: "direct" }
+      : vpnConfig.mode === "vpn" || vpnConfig.cookies
+        ? { mode: vpnConfig.mode, cookies: vpnConfig.cookies }
+        : undefined;
+  const rawClient = new Cc98Client({ tokenStore, webVpn: webVpnOptions });
+  if (webVpnOptions) {
+    await rawClient.initWebVpn();
+  }
   const client = new CachedCc98Client(rawClient);
   let exitRequested = false;
   const state: TuiState = {
@@ -160,6 +175,8 @@ export async function runTui(): Promise<void> {
       };
 
       const offKey = terminal.onKey((key) => {
+        const keyAction = keymap.feed(key);
+
         // Global: Ctrl+C or q to quit
         if (key === "\u0003" || key === "q") {
           close();
@@ -442,7 +459,19 @@ export async function runTui(): Promise<void> {
             render();
             return;
           }
+          if (keyAction === "topic.next-reply" && state.topic) {
+            jumpRelativeTopicFloor(state, 1);
+            state.status = getStatus(state);
+            render();
+            return;
+          }
           if ((key === "[" || key === "【") && state.topic) {
+            jumpRelativeTopicFloor(state, -1);
+            state.status = getStatus(state);
+            render();
+            return;
+          }
+          if (keyAction === "topic.previous-reply" && state.topic) {
             jumpRelativeTopicFloor(state, -1);
             state.status = getStatus(state);
             render();
@@ -1047,7 +1076,7 @@ async function loadTopicImagePreviews(topic: TopicReaderState, render: () => voi
 }
 
 function buildTopicReader(topicId: number, topic: Record<string, unknown>, posts: unknown[], size: number, config: TuiConfig): TopicReaderState {
-  const title = String(topic.title ?? `#${topicId}`);
+  const title = normalizeInlineText(String(topic.title ?? `#${topicId}`));
   const meta = [
     topic.userName,
     topic.replyCount !== undefined ? `${topic.replyCount} 回复` : undefined,
@@ -1091,7 +1120,7 @@ function renderPosts(posts: unknown[], width: number, config: TuiConfig, lineOff
     const time = typeof post.time === "string" ? post.time.replace("T", " ").slice(0, 16) : "";
     const likeCount = asNumber(post.likeCount) ?? 0;
     const dislikeCount = asNumber(post.dislikeCount) ?? 0;
-    const like = likeCount > 0 ? ` · ${likeCount} 赞` : "";
+    const reactions = ` · ${likeCount} 赞 · ${dislikeCount} 踩`;
     const push = (
       text: string,
       kind: TopicLineEntry["kind"],
@@ -1109,14 +1138,19 @@ function renderPosts(posts: unknown[], width: number, config: TuiConfig, lineOff
       });
     };
 
-    push(`${floor} ${author}${time ? ` · ${time}` : ""}${like}`, "header");
+    push(`${floor} ${author}${time ? ` · ${time}` : ""}${reactions}`, "header");
     const contentWidth = Math.max(8, width - 2);
     push(theme.border.horizontal.repeat(contentWidth), "divider");
 
     const content = typeof post.content === "string" ? post.content : "";
-    const rendered = renderUbbToLines(content, contentWidth, {
+    const contentType = asNumber(post.contentType) ?? 0;
+    const rendered = contentType === 1
+      ? renderMarkdownToLines(content, contentWidth, {
+        imagePreviewRows: config.previewImages && supportsImagePreview() ? imagePreviewRows : 0
+      })
+      : renderUbbToLines(content, contentWidth, {
       imagePreviewRows: config.previewImages && supportsImagePreview() ? imagePreviewRows : 0
-    });
+      });
     rendered.lines.forEach((renderedLine) => {
       const imageIndex = parseBracketIndex(renderedLine, "image");
       const linkIndex = parseBracketIndex(renderedLine, "link");
@@ -1441,11 +1475,12 @@ function topicItem(value: unknown, fallbackBoard?: ContentItem): ContentItem {
   const topicId = asNumber(topic.id ?? topic.Id);
   const boardId = asNumber(topic.boardId ?? topic.BoardId) ?? fallbackBoard?.boardId;
   const boardName = topic.boardName ?? topic.BoardName ?? fallbackBoard?.title;
+  const authorName = normalizeInlineText(String(topic.userName ?? topic.authorName ?? "")).trim() || "匿名";
   return {
-    title: String(topic.title ?? topic.Title ?? `#${topicId ?? ""}`),
+    title: normalizeInlineText(String(topic.title ?? topic.Title ?? `#${topicId ?? ""}`)),
     meta: [
       boardName,
-      topic.userName ?? topic.authorName,
+      authorName,
       topic.replyCount !== undefined ? `${topic.replyCount} 回复` : undefined,
       topic.hitCount !== undefined ? `${topic.hitCount} 浏览` : undefined
     ]
@@ -1597,6 +1632,10 @@ function timestampOf(value: unknown): number | undefined {
   }
   const timestamp = new Date(value).getTime();
   return Number.isFinite(timestamp) ? timestamp : undefined;
+}
+
+function normalizeInlineText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
 }
 
 function isAbortError(error: unknown): boolean {

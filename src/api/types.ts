@@ -5,6 +5,15 @@ export interface AuthToken {
   error_description?: string;
 }
 
+export interface WebVpnOptions {
+  mode?: "auto" | "vpn" | "direct";
+  cookies?: Record<string, string>;
+  credentials?: {
+    username: string;
+    password: string;
+  };
+}
+
 export interface ClientOptions {
   tokenStore: {
     getAccessToken(): Promise<string | undefined>;
@@ -13,6 +22,7 @@ export interface ClientOptions {
     save(tokens: { accessToken: string; refreshToken?: string }): Promise<void>;
     saveAccount?(account: string, tokens: { accessToken: string; refreshToken?: string }): Promise<unknown>;
   };
+  webVpn?: WebVpnOptions;
 }
 
 export type JsonObject = Record<string, unknown>;

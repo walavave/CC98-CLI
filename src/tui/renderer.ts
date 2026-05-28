@@ -225,6 +225,9 @@ function listItemTitle(itemValue: { title: string; detail?: string }, config: Tu
   if (!config.hideRightPanel || !itemValue.detail) {
     return itemValue.title;
   }
+  if ("topicId" in itemValue && itemValue.topicId !== undefined) {
+    return itemValue.title;
+  }
   return `${itemValue.title}  ${truncate(itemValue.detail, 80)}`;
 }
 
@@ -265,7 +268,7 @@ function drawTopic(state: TuiState, width: number, height: number): TopicDrawRes
 
   const rows: string[] = [];
   const imageOverlays: Array<{ row: number; token: string }> = [];
-  rows.push(textStyle.primaryBold(` ${topic.title}`));
+  rows.push(fit(textStyle.primaryBold(` ${topic.title}`), width));
   rows.push(fit(textStyle.muted(` ${topic.meta}`), width));
   rows.push(ruleLine(Math.max(0, width - 1)));
 

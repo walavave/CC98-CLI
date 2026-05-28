@@ -66,6 +66,55 @@ export function renderUbbToLines(content: string, width: number, options: Render
   };
 }
 
+export function renderMarkdownToLines(content: string, width: number, options: RenderOptions = {}): RenderedPost {
+  const images: string[] = [];
+  const links: string[] = [];
+  let text = content.replace(/\r\n/g, "\n");
+
+  text = text.replace(/!\[([^\]]*)\]\(([^)\s]+(?:\s+"[^"]*")?)\)/g, (_match, _alt: string, target: string) => {
+    const cleanUrl = normalizeMarkdownTarget(target);
+    images.push(cleanUrl);
+    const index = images.length;
+    return imageBlock(index, cleanUrl, options.imagePreviewRows);
+  });
+
+  text = text.replace(/<img\b[^>]*\bsrc=(["']?)([^"'\s>]+)\1[^>]*>/gi, (_match, _quote: string, url: string) => {
+    const cleanUrl = normalizeImageUrl(url);
+    images.push(cleanUrl);
+    const index = images.length;
+    return imageBlock(index, cleanUrl, options.imagePreviewRows);
+  });
+
+  text = text.replace(/\[([^\]]+)\]\(([^)\s]+(?:\s+"[^"]*")?)\)/g, (_match, label: string, target: string) => {
+    const cleanUrl = normalizeMarkdownTarget(target);
+    links.push(cleanUrl);
+    return `${label} [link ${links.length}: ${shortUrl(cleanUrl)}]`;
+  });
+
+  text = text.replace(/^\s{0,3}>\s?(.*)$/gm, (_match, quoted: string) => `${theme.quote.prefix}${quoted}`);
+  text = text.replace(/```([\s\S]*?)```/g, (_match, code: string) => {
+    const normalized = code.replace(/^\w+\n/, "");
+    return `\n${normalized.split("\n").map((line) => `    ${line}`).join("\n")}\n`;
+  });
+  text = text.replace(/`([^`]+)`/g, "$1");
+  text = text.replace(/^\s{0,3}(#{1,6})\s+(.*)$/gm, (_match, _hashes: string, heading: string) => `\n${heading}\n`);
+  text = text.replace(/^\s*[-*_]{3,}\s*$/gm, "");
+  text = text.replace(/\*\*([^*]+)\*\*/g, "$1");
+  text = text.replace(/__([^_]+)__/g, "$1");
+  text = text.replace(/(^|[^\*])\*([^\*]+)\*(?!\*)/g, "$1$2");
+  text = text.replace(/(^|[^_])_([^_]+)_(?!_)/g, "$1$2");
+  text = text.replace(/~~([^~]+)~~/g, "$1");
+  text = text.replace(/^\s*[-*+]\s+/gm, "• ");
+  text = text.replace(/^\s*\d+\.\s+/gm, (match) => match.replace(/^\s*/, ""));
+  text = decodeHtml(text);
+
+  return {
+    lines: wrapLines(text, width),
+    images,
+    links
+  };
+}
+
 function stripUbb(value: string): string {
   return value
     .replace(/\[(?:\/)?(?:b|i|u|size|color|align|email|del|s|sub|sup|h\d?)(?:=[^\]]*)?\]/gi, "")
@@ -97,6 +146,11 @@ function normalizeImageUrl(value: string): string {
     return `https://file.cc98.org${decoded}`;
   }
   return decoded;
+}
+
+function normalizeMarkdownTarget(value: string): string {
+  const match = value.trim().match(/^(\S+)(?:\s+".*")?$/);
+  return normalizeImageUrl(match?.[1] ?? value);
 }
 
 function imageBlock(index: number, url: string, previewRows = 0): string {

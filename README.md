@@ -75,6 +75,18 @@ preview_images = true
 
 图片预览目前支持 Kitty graphics protocol 和 iTerm2 inline image。若终端不支持对应协议，会保留文本图片占位。
 
+快捷键映射文件路径为 `~/.config/cc98-cli/keymap.toml`。格式参考 `keymap.toml`，组合键使用尖括号表示，例如：
+
+```toml
+[tui]
+prepend_keymap = [
+  { on = "<A-Down>", run = "topic.next-reply", desc = "下一条回复" },
+  { on = "<A-Up>", run = "topic.previous-reply", desc = "上一条回复" },
+]
+```
+
+默认已内置 `<A-Down>` / `<A-Up>` 用于在主题阅读模式下跳转相邻回复。
+
 ## CLI
 
 CLI 默认输出 JSON，适合配合 `jq` 或脚本使用。

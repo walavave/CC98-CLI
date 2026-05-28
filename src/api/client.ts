@@ -1,5 +1,6 @@
 import { endpoints } from "./endpoints.js";
-import type { AuthToken, ClientOptions, JsonObject } from "./types.js";
+import { WebVpnService } from "./webvpn.js";
+import type { AuthToken, ClientOptions, JsonObject, WebVpnOptions } from "./types.js";
 
 const passwordClientId = "9a1fd200-8687-44b1-4c20-08d50a96e5cd";
 const passwordClientSecret = "8b53f727-08e2-4509-8857-e34bf92b27f2";
@@ -15,10 +16,48 @@ interface TokenRefreshResult {
 
 export class Cc98Client {
   private readonly tokenStore: ClientOptions["tokenStore"];
+  private readonly webVpn?: WebVpnService;
+  private readonly webVpnOptions?: WebVpnOptions;
   private refreshPromise: Promise<TokenRefreshResult | null> | null = null;
 
   constructor(options: ClientOptions) {
     this.tokenStore = options.tokenStore;
+    this.webVpnOptions = options.webVpn;
+    if (options.webVpn) {
+      this.webVpn = new WebVpnService(options.webVpn.cookies);
+    }
+  }
+
+  async initWebVpn(): Promise<void> {
+    if (!this.webVpn || !this.webVpnOptions) {
+      return;
+    }
+
+    const mode = this.webVpnOptions.mode || "auto";
+    if (mode === "direct") {
+      return;
+    }
+
+    if (mode === "vpn") {
+      this.webVpn.enabled = true;
+      if (!this.webVpn.isLoggedIn) {
+        console.error("WebVPN is enabled but not logged in. Run \"cc98 vpn login\" first.");
+      }
+      return;
+    }
+
+    const inCampus = await this.webVpn.checkNetwork();
+    if (!inCampus) {
+      this.webVpn.enabled = true;
+      if (!this.webVpn.isLoggedIn) {
+        this.webVpn.enabled = false;
+        console.error("WebVPN is needed but not logged in. Run \"cc98 vpn login\" first.");
+      }
+    }
+  }
+
+  getWebVpnStatus(): { enabled: boolean; loggedIn: boolean } | undefined {
+    return this.webVpn?.getStatus();
   }
 
   async loginWithPassword(username: string, password: string): Promise<{ accessToken: string; refreshToken?: string }> {
@@ -196,20 +235,30 @@ export class Cc98Client {
       headers.set("authorization", `Bearer ${token}`);
     }
 
-    let response = await fetch(url, {
-      ...init,
-      headers
-    });
+    let response = this.webVpn?.isEnabled
+      ? await this.webVpn.fetch(url, {
+        ...init,
+        headers: Object.fromEntries(headers.entries())
+      })
+      : await fetch(url, {
+        ...init,
+        headers
+      });
 
     // Try to refresh token on 401
     if (response.status === 401 && authorize) {
       const refreshed = await this.tryRefreshToken();
       if (refreshed) {
         headers.set("authorization", `Bearer ${refreshed.accessToken}`);
-        response = await fetch(url, {
-          ...init,
-          headers
-        });
+        response = this.webVpn?.isEnabled
+          ? await this.webVpn.fetch(url, {
+            ...init,
+            headers: Object.fromEntries(headers.entries())
+          })
+          : await fetch(url, {
+            ...init,
+            headers
+          });
       }
     }
 
