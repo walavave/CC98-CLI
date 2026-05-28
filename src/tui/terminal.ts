@@ -19,6 +19,13 @@ export interface TerminalFrame {
 }
 
 export type KeyHandler = (key: string) => void;
+export interface MouseEvent {
+  kind: "down" | "drag" | "up";
+  button: "left" | "middle" | "right" | "wheel-up" | "wheel-down";
+  row: number;
+  column: number;
+}
+export type MouseHandler = (event: MouseEvent) => void;
 export type ResizeHandler = () => void;
 
 export class Terminal {
@@ -26,6 +33,7 @@ export class Terminal {
   private previousPaused = true;
   private previousHadImageOverlays = false;
   private readonly keyHandlers = new Set<KeyHandler>();
+  private readonly mouseHandlers = new Set<MouseHandler>();
   private readonly resizeHandlers = new Set<ResizeHandler>();
 
   enter(): void {
@@ -36,7 +44,7 @@ export class Terminal {
     }
     stdin.resume();
     stdin.setEncoding("utf8");
-    stdout.write(`${ansi.enterAltScreen}${ansi.clear}${ansi.home}${ansi.hideCursor}`);
+    stdout.write(`${ansi.enterAltScreen}${ansi.clear}${ansi.home}${ansi.hideCursor}${ansi.enableMouse}`);
     stdin.on("data", this.handleData);
     stdout.on("resize", this.handleResize);
   }
@@ -44,7 +52,7 @@ export class Terminal {
   exit(): void {
     stdin.off("data", this.handleData);
     stdout.off("resize", this.handleResize);
-    stdout.write(`${ansi.reset}${ansi.clear}${ansi.home}${ansi.showCursor}${ansi.exitAltScreen}`);
+    stdout.write(`${ansi.disableMouse}${ansi.reset}${ansi.clear}${ansi.home}${ansi.showCursor}${ansi.exitAltScreen}`);
     if (stdin.isTTY) {
       stdin.setRawMode(this.previousRawMode);
     }
@@ -85,6 +93,11 @@ export class Terminal {
     return () => this.keyHandlers.delete(handler);
   }
 
+  onMouse(handler: MouseHandler): () => void {
+    this.mouseHandlers.add(handler);
+    return () => this.mouseHandlers.delete(handler);
+  }
+
   onResize(handler: ResizeHandler): () => void {
     this.resizeHandlers.add(handler);
     return () => this.resizeHandlers.delete(handler);
@@ -92,6 +105,13 @@ export class Terminal {
 
   private readonly handleData = (chunk: Buffer | string): void => {
     const key = chunk.toString("utf8");
+    const mouse = parseMouseEvent(key);
+    if (mouse) {
+      for (const handler of this.mouseHandlers) {
+        handler(mouse);
+      }
+      return;
+    }
     for (const handler of this.keyHandlers) {
       if (key.length > 1 && !key.startsWith("\x1b")) {
         for (const char of key) {
@@ -108,4 +128,23 @@ export class Terminal {
       handler();
     }
   };
+}
+
+function parseMouseEvent(input: string): MouseEvent | undefined {
+  const match = /^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/.exec(input);
+  if (!match) {
+    return undefined;
+  }
+  const code = Number(match[1]);
+  const column = Number(match[2]);
+  const row = Number(match[3]);
+  const suffix = match[4];
+  const wheel = (code & 64) !== 0;
+  const dragging = (code & 32) !== 0;
+  const buttonCode = code & 3;
+  const button = wheel
+    ? buttonCode === 0 ? "wheel-up" : "wheel-down"
+    : buttonCode === 0 ? "left" : buttonCode === 1 ? "middle" : "right";
+  const kind: MouseEvent["kind"] = suffix === "m" ? "up" : dragging ? "drag" : "down";
+  return { kind, button, row, column };
 }

@@ -30,6 +30,8 @@ export interface TuiState {
   navIndex: number;
   itemIndex: number;
   scroll: number;
+  sidebarWidth?: number;
+  draggingSidebarDivider: boolean;
   loading: boolean;
   loadingMore: boolean;
   status: string;

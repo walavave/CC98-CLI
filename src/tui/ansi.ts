@@ -5,6 +5,8 @@ export const ansi = {
   home: "\x1b[H",
   hideCursor: "\x1b[?25l",
   showCursor: "\x1b[?25h",
+  enableMouse: "\x1b[?1000h\x1b[?1002h\x1b[?1006h",
+  disableMouse: "\x1b[?1006l\x1b[?1002l\x1b[?1000l",
   reset: "\x1b[0m",
   inverse: "\x1b[7m",
   dim: "\x1b[2m",

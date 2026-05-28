@@ -43,14 +43,12 @@ export class Canvas {
     this.fill(area, theme.border.horizontal, theme.color.rule);
   }
 
-  border(area: Rect, rows: string[], options: { fill?: string } = {}): void {
+  frame(area: Rect): void {
     if (area.width < 2 || area.height < 2) {
-      this.clear(area);
       return;
     }
 
     const innerWidth = Math.max(0, area.width - 2);
-    const fill = options.fill ?? "";
     const borderStyle = theme.color.rule;
 
     this.setCell(area.x, area.y, theme.border.topLeft, borderStyle);
@@ -62,6 +60,21 @@ export class Canvas {
     this.fill({ x: area.x + 1, y: area.y + area.height - 1, width: innerWidth, height: 1 }, theme.border.horizontal, borderStyle);
     this.fill({ x: area.x, y: area.y + 1, width: 1, height: area.height - 2 }, theme.border.vertical, borderStyle);
     this.fill({ x: area.x + area.width - 1, y: area.y + 1, width: 1, height: area.height - 2 }, theme.border.vertical, borderStyle);
+  }
+
+  junction(x: number, y: number, glyph: string): void {
+    this.setCell(x, y, glyph, theme.color.rule);
+  }
+
+  border(area: Rect, rows: string[], options: { fill?: string } = {}): void {
+    if (area.width < 2 || area.height < 2) {
+      this.clear(area);
+      return;
+    }
+
+    const innerWidth = Math.max(0, area.width - 2);
+    const fill = options.fill ?? "";
+    this.frame(area);
 
     const innerArea = { x: area.x + 1, y: area.y + 1, width: innerWidth, height: area.height - 2 };
     if (fill) {
@@ -87,7 +100,7 @@ export class Canvas {
         }
         const style = cell.style.join("");
         if (style !== currentStyle) {
-          output += style || ansi.reset;
+          output += style ? `${ansi.reset}${style}` : ansi.reset;
           currentStyle = style;
         }
         output += cell.text;

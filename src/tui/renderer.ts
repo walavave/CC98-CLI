@@ -6,7 +6,7 @@ import {
 import type { TuiConfig } from "../config.js";
 import { Canvas } from "./canvas.js";
 import { imagePreviewRows } from "./image-preview.js";
-import { center, fill, length, min, percentage, rect, split } from "./layout.js";
+import { center, fill, length, min, pad, percentage, rect, split } from "./layout.js";
 import type { TerminalFrame, TerminalImageOverlay } from "./terminal.js";
 import { blank, cellWidth, fit, truncate, wrapText } from "./text.js";
 import { ruleLine, selectedLine, textStyle, theme } from "./theme.js";
@@ -27,6 +27,14 @@ interface TopicDrawResult {
   imageOverlays: Array<{ row: number; token: string }>;
 }
 
+export function getSidebarWidth(totalWidth: number, preferred?: number): number {
+  const fallback = totalWidth < 56 ? 0 : totalWidth < 90 ? 14 : 18;
+  if (preferred === undefined || preferred <= 0 || totalWidth < 56) {
+    return fallback;
+  }
+  return Math.max(10, Math.min(preferred, Math.max(10, Math.floor(totalWidth * 0.35))));
+}
+
 export function draw(state: TuiState, size: { columns: number; rows: number }, config: TuiConfig): TerminalFrame {
   const width = Math.max(1, size.columns);
   const height = Math.max(1, size.rows);
@@ -41,27 +49,32 @@ export function draw(state: TuiState, size: { columns: number; rows: number }, c
     return { text: canvas.toString() };
   }
 
-  const root = rect(width, height);
+  const outer = rect(width, Math.max(0, height - 1));
+  canvas.frame(outer);
+  const root = pad(outer, 1);
   const verticalLayout = config.hideTopChrome
-    ? [fill(), length(1), length(1)]
-    : [length(1), length(1), length(1), length(1), fill(), length(1), length(1)];
+    ? [fill()]
+    : [length(1), length(1), length(1), length(1), fill()];
   const areas = split(root, "vertical", verticalLayout);
   const headerArea = config.hideTopChrome ? undefined : areas[0];
   const headerRuleArea = config.hideTopChrome ? undefined : areas[1];
   const overviewArea = config.hideTopChrome ? undefined : areas[2];
   const overviewRuleArea = config.hideTopChrome ? undefined : areas[3];
   const bodyArea = config.hideTopChrome ? areas[0] : areas[4];
-  const footerRuleArea = config.hideTopChrome ? areas[1] : areas[5];
-  const statusArea = config.hideTopChrome ? areas[2] : areas[6];
+  const statusArea = rect(width, 1, 0, height - 1);
 
   if (headerArea && headerRuleArea && overviewArea && overviewRuleArea) {
     canvas.drawLines(headerArea, [header(headerArea.width, state)]);
     canvas.horizontalRule(headerRuleArea);
     canvas.drawLines(overviewArea, drawOverview(state, overviewArea.width, overviewArea.height));
     canvas.horizontalRule(overviewRuleArea);
+    canvas.junction(outer.x, headerRuleArea.y, theme.border.teeLeft);
+    canvas.junction(outer.x + outer.width - 1, headerRuleArea.y, theme.border.teeRight);
+    canvas.junction(outer.x, overviewRuleArea.y, theme.border.teeLeft);
+    canvas.junction(outer.x + outer.width - 1, overviewRuleArea.y, theme.border.teeRight);
   }
 
-  const sidebarWidth = width < 56 ? 0 : width < 90 ? 14 : 18;
+  const sidebarWidth = getSidebarWidth(width, state.sidebarWidth);
   const showRight = width >= 78 && !config.hideRightPanel;
   const bodyColumns = showRight
     ? split(bodyArea, "horizontal", [
@@ -99,12 +112,18 @@ export function draw(state: TuiState, size: { columns: number; rows: number }, c
 
   if (sidebarRuleArea.width > 0) {
     canvas.verticalRule(sidebarRuleArea);
+    canvas.junction(sidebarRuleArea.x, bodyArea.y - 1, theme.border.teeTop);
   }
   if (rightArea && rightRuleArea && rightArea.width > 0 && rightRuleArea.width > 0) {
     canvas.verticalRule(rightRuleArea);
+    canvas.junction(rightRuleArea.x, bodyArea.y - 1, theme.border.teeTop);
   }
-
-  canvas.horizontalRule(footerRuleArea);
+  if (sidebarRuleArea.width > 0) {
+    canvas.junction(sidebarRuleArea.x, outer.y + outer.height - 1, theme.border.teeBottom);
+  }
+  if (rightArea && rightRuleArea && rightArea.width > 0 && rightRuleArea.width > 0) {
+    canvas.junction(rightRuleArea.x, outer.y + outer.height - 1, theme.border.teeBottom);
+  }
   canvas.drawLines(statusArea, [drawStatusBar(state, statusArea.width)]);
 
   const baseLines = canvas.toLines();
@@ -167,8 +186,7 @@ function drawSidebar(state: TuiState, width: number, height: number): string[] {
 }
 
 function sidebarSelectedLine(content: string, width: number, focused: boolean): string {
-  const highlightWidth = Math.max(1, width - 1);
-  return selectedLine(content, highlightWidth, focused) + " ".repeat(width - highlightWidth);
+  return selectedLine(content, width, true);
 }
 
 function drawMain(state: TuiState, width: number, height: number, config: TuiConfig): TopicDrawResult {

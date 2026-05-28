@@ -20,7 +20,12 @@ export const theme = {
     topLeft: "╭",
     topRight: "╮",
     bottomLeft: "╰",
-    bottomRight: "╯"
+    bottomRight: "╯",
+    teeLeft: "├",
+    teeRight: "┤",
+    teeTop: "┬",
+    teeBottom: "┴",
+    cross: "┼"
   },
   marker: {
     selected: "●",
