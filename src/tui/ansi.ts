@@ -1,4 +1,6 @@
 export const ansi = {
+  enterAltScreen: "\x1b[?1049h",
+  exitAltScreen: "\x1b[?1049l",
   clear: "\x1b[2J",
   home: "\x1b[H",
   hideCursor: "\x1b[?25l",

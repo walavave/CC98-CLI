@@ -1,3 +1,5 @@
+import { theme } from "./theme.js";
+
 export interface RenderedPost {
   lines: string[];
   images: string[];
@@ -29,7 +31,7 @@ export function renderUbbToLines(content: string, width: number): RenderedPost {
   });
 
   text = text.replace(/\[quote\]([\s\S]*?)\[\/quote\]/gi, (_match, quoted: string) => {
-    return `\n${stripUbb(quoted).split("\n").map((line) => `│ ${line}`).join("\n")}\n`;
+    return `\n${stripUbb(quoted).split("\n").map((line) => `${theme.quote.prefix}${line}`).join("\n")}\n`;
   });
 
   text = text.replace(/\[code\]([\s\S]*?)\[\/code\]/gi, (_match, code: string) => {

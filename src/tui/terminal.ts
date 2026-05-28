@@ -23,7 +23,7 @@ export class Terminal {
     }
     stdin.resume();
     stdin.setEncoding("utf8");
-    stdout.write(ansi.hideCursor);
+    stdout.write(`${ansi.enterAltScreen}${ansi.clear}${ansi.home}${ansi.hideCursor}`);
     stdin.on("data", this.handleData);
     stdout.on("resize", this.handleResize);
   }
@@ -31,7 +31,7 @@ export class Terminal {
   exit(): void {
     stdin.off("data", this.handleData);
     stdout.off("resize", this.handleResize);
-    stdout.write(`${ansi.reset}${ansi.showCursor}`);
+    stdout.write(`${ansi.reset}${ansi.clear}${ansi.home}${ansi.showCursor}${ansi.exitAltScreen}`);
     if (stdin.isTTY) {
       stdin.setRawMode(this.previousRawMode);
     }
