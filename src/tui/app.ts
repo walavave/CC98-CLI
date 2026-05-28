@@ -2,6 +2,18 @@ import { Cc98Client } from "../api/client.js";
 import { TokenStore } from "../storage/token-store.js";
 import { checkForUpdate } from "../update.js";
 import { appVersion } from "../version.js";
+import {
+  createLoginForm,
+  drawAccountModal,
+  drawConfirmModal,
+  drawLoginModal,
+  isPrintableInput,
+  type AccountListItem,
+  type AccountModalState,
+  type ConfirmDialogState,
+  type LoginFormState,
+  updateLoginField
+} from "./account-modal.js";
 import { ansi, bg, fg, stripAnsi } from "./ansi.js";
 import { CachedCc98Client } from "./cached-client.js";
 import { Terminal } from "./terminal.js";
@@ -9,7 +21,7 @@ import { renderUbbToLines } from "./ubb-renderer.js";
 
 type ViewId = "hot" | "new" | "boards" | "following" | "favorite" | "messages" | "me" | "settings";
 type FocusColumn = "nav" | "content";
-type ModalType = "menu" | "help" | null;
+type ModalType = "menu" | "help" | "account" | "login" | "confirm" | null;
 
 interface NavItem {
   id: ViewId;
@@ -49,6 +61,9 @@ interface TuiState {
   modal: ModalType;
   menuIndex: number;
   menuItems: MenuItem[];
+  accountModal: AccountModalState;
+  loginForm: LoginFormState;
+  confirmDialog?: ConfirmDialogState;
 }
 
 interface ListSnapshot {
@@ -162,7 +177,8 @@ const settingsItems: ContentItem[] = [
 export async function runTui(): Promise<void> {
   const terminal = new Terminal();
   const tokenStore = new TokenStore();
-  const client = new CachedCc98Client(new Cc98Client({ tokenStore }));
+  const rawClient = new Cc98Client({ tokenStore });
+  const client = new CachedCc98Client(rawClient);
   let exitRequested = false;
   const state: TuiState = {
     mode: "list",
@@ -179,7 +195,17 @@ export async function runTui(): Promise<void> {
     overview: [],
     modal: null,
     menuIndex: 0,
-    menuItems: []
+    menuItems: [],
+    accountModal: {
+      accounts: [],
+      selectedIndex: 0
+    },
+    loginForm: {
+      username: "",
+      password: "",
+      fieldIndex: 0,
+      submitting: false
+    }
   };
 
   terminal.enter();
@@ -338,6 +364,197 @@ export async function runTui(): Promise<void> {
           return;
         }
 
+        if (state.modal === "account") {
+          if (key === "j" || key === "\x1b[B") {
+            state.accountModal.selectedIndex = Math.min(state.accountModal.accounts.length, state.accountModal.selectedIndex + 1);
+            render();
+            return;
+          }
+          if (key === "k" || key === "\x1b[A") {
+            state.accountModal.selectedIndex = Math.max(0, state.accountModal.selectedIndex - 1);
+            render();
+            return;
+          }
+          if (key === "h" || key === "\x1b[D" || key === "\x1b") {
+            state.modal = null;
+            state.status = getStatus(state);
+            render();
+            return;
+          }
+          if (key === "\r" || key === "l" || key === "\x1b[C") {
+            if (state.accountModal.selectedIndex === state.accountModal.accounts.length) {
+              state.loginForm = createLoginForm();
+              state.modal = "login";
+              render();
+              return;
+            }
+            const selected = state.accountModal.accounts[state.accountModal.selectedIndex];
+            if (!selected) {
+              return;
+            }
+            state.status = `正在切换到 @${selected.account}...`;
+            state.modal = null;
+            render();
+            void tokenStore.useAccount(selected.account).then(() => {
+              state.account = selected.account;
+              state.status = `已切换到 @${selected.account}`;
+              void load(true);
+            }).catch((error: unknown) => {
+              state.error = error instanceof Error ? error.message : String(error);
+              state.status = "账号切换失败";
+              render();
+            });
+            return;
+          }
+          return;
+        }
+
+        if (state.modal === "login") {
+          if (state.loginForm.submitting) {
+            return;
+          }
+          if (key === "\t" || key === "j" || key === "\x1b[B") {
+            state.loginForm.fieldIndex = (state.loginForm.fieldIndex + 1) % 3;
+            render();
+            return;
+          }
+          if (key === "k" || key === "\x1b[A") {
+            state.loginForm.fieldIndex = (state.loginForm.fieldIndex + 2) % 3;
+            render();
+            return;
+          }
+          if (key === "h" || key === "\x1b[D") {
+            if (state.loginForm.fieldIndex > 0) {
+              state.loginForm.fieldIndex -= 1;
+              render();
+              return;
+            }
+          }
+          if (key === "l" || key === "\x1b[C") {
+            if (state.loginForm.fieldIndex < 2) {
+              state.loginForm.fieldIndex += 1;
+              render();
+              return;
+            }
+          }
+          if (key === "\x1b") {
+            state.modal = "account";
+            state.loginForm.error = undefined;
+            state.status = getStatus(state);
+            render();
+            return;
+          }
+          if (key === "\x7f") {
+            updateLoginField(state.loginForm, (value) => value.slice(0, -1));
+            render();
+            return;
+          }
+          if (key === "\r") {
+            if (state.loginForm.fieldIndex < 2) {
+              state.loginForm.fieldIndex += 1;
+              render();
+              return;
+            }
+
+            const username = state.loginForm.username.trim();
+            const password = state.loginForm.password;
+            if (!username || !password) {
+              state.loginForm.error = "用户名和密码不能为空";
+              render();
+              return;
+            }
+
+            state.loginForm.submitting = true;
+            state.loginForm.error = undefined;
+            state.status = `正在登录 ${username}...`;
+            render();
+
+            void rawClient.loginWithPassword(username, password).then(async (token) => {
+              const me = await rawClient.getMeWithAccessToken(token.accessToken);
+              const resolvedAccount = getDefaultAccountName(me, username);
+              await tokenStore.saveAccount(resolvedAccount, {
+                accessToken: token.accessToken,
+                refreshToken: token.refreshToken,
+                userId: typeof me.id === "number" ? me.id : undefined,
+                username,
+                displayName: typeof me.name === "string" ? me.name : undefined
+              });
+              state.account = resolvedAccount;
+              await refreshAccounts(state, tokenStore);
+              state.loginForm = createLoginForm();
+              state.modal = null;
+              state.status = `已登录为 ${typeof me.name === "string" ? me.name : username}`;
+              await load(true);
+            }).catch((error: unknown) => {
+              state.loginForm.submitting = false;
+              state.loginForm.error = normalizeLoginMessage(error);
+              state.status = "登录失败";
+              render();
+            });
+            return;
+          }
+          if (isPrintableInput(key)) {
+            updateLoginField(state.loginForm, (value) => `${value}${key}`);
+            render();
+            return;
+          }
+          return;
+        }
+
+        if (state.modal === "confirm") {
+          if (!state.confirmDialog) {
+            state.modal = null;
+            render();
+            return;
+          }
+          if (key === "j" || key === "\x1b[B" || key === "k" || key === "\x1b[A" || key === "\t") {
+            state.confirmDialog.selectedIndex = state.confirmDialog.selectedIndex === 0 ? 1 : 0;
+            render();
+            return;
+          }
+          if (key === "h" || key === "\x1b[D" || key === "\x1b") {
+            state.modal = null;
+            state.confirmDialog = undefined;
+            state.status = getStatus(state);
+            render();
+            return;
+          }
+          if (key === "\r" || key === "l" || key === "\x1b[C") {
+            if (state.confirmDialog.selectedIndex === 1) {
+              state.modal = null;
+              state.confirmDialog = undefined;
+              state.status = getStatus(state);
+              render();
+              return;
+            }
+
+            const account = state.account;
+            state.modal = null;
+            state.status = account ? `正在退出 @${account}...` : "正在清除登录信息...";
+            render();
+
+            void (async () => {
+              if (account) {
+                await tokenStore.removeAccount(account);
+              } else {
+                await tokenStore.clear();
+              }
+              state.account = await tokenStore.getCurrentAccountName();
+              await refreshAccounts(state, tokenStore);
+              state.status = "已退出登录";
+              await load(true);
+            })().catch((error: unknown) => {
+              state.error = error instanceof Error ? error.message : String(error);
+              state.status = "退出登录失败";
+              render();
+            }).finally(() => {
+              state.confirmDialog = undefined;
+            });
+            return;
+          }
+          return;
+        }
+
         // Topic mode
         if (state.mode === "topic") {
           if (/^\d$/.test(key) && state.topic) {
@@ -458,11 +675,32 @@ export async function runTui(): Promise<void> {
                 render();
               });
             } else if (selected?.meta === "logout") {
-              state.status = "退出登录功能开发中...";
+              state.confirmDialog = {
+                title: "退出登录",
+                detail: state.account
+                  ? `删除本地账号 @${state.account} 的登录信息？`
+                  : "清除本地登录信息？",
+                confirmLabel: "确认退出",
+                cancelLabel: "取消",
+                selectedIndex: 1,
+                action: "logout"
+              };
+              state.modal = "confirm";
               render();
             } else if (selected?.meta === "account") {
-              state.status = "账号切换功能开发中...";
-              render();
+              void refreshAccounts(state, tokenStore).then(() => {
+                if (state.accountModal.accounts.length === 0) {
+                  state.loginForm = createLoginForm();
+                  state.modal = "login";
+                } else {
+                  state.modal = "account";
+                }
+                render();
+              }).catch((error: unknown) => {
+                state.error = error instanceof Error ? error.message : String(error);
+                state.status = "读取账号列表失败";
+                render();
+              });
             } else if (selected?.meta === "update") {
               state.status = "正在检查 GitHub Release...";
               render();
@@ -1155,6 +1393,41 @@ function formatRating(post: Record<string, unknown>): string | undefined {
   return undefined;
 }
 
+async function refreshAccounts(state: TuiState, tokenStore: TokenStore): Promise<void> {
+  const accounts = await tokenStore.listAccounts();
+  const current = await tokenStore.getCurrentAccountName();
+  state.account = current;
+  state.accountModal.accounts = accounts.map((account) => ({
+    account: account.account,
+    detail: account.displayName ?? account.username ?? (account.userId ? `#${account.userId}` : "本地账号"),
+    isCurrent: account.account === current
+  }));
+  state.accountModal.selectedIndex = Math.min(
+    state.accountModal.accounts.findIndex((account) => account.isCurrent),
+    state.accountModal.accounts.length
+  );
+  if (state.accountModal.selectedIndex < 0) {
+    state.accountModal.selectedIndex = 0;
+  }
+}
+
+function getDefaultAccountName(me: Record<string, unknown>, username: string): string {
+  if (typeof me.name === "string" && me.name.trim()) {
+    return me.name.trim();
+  }
+  if (typeof me.id === "number") {
+    return String(me.id);
+  }
+  return username;
+}
+
+function normalizeLoginMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message.replace(/^login failed:\s*/i, "");
+  }
+  return String(error);
+}
+
 async function loadView(client: CachedCc98Client, view: ViewId, force: boolean, signal?: AbortSignal): Promise<{
   title: string;
   items: ContentItem[];
@@ -1326,6 +1599,15 @@ function draw(state: TuiState, size: { columns: number; rows: number }): string 
   }
   if (state.modal === "menu") {
     return drawMenuModal(lines, state, width, height);
+  }
+  if (state.modal === "account") {
+    return drawAccountModal(lines, state.accountModal, width, height);
+  }
+  if (state.modal === "login") {
+    return drawLoginModal(lines, state.loginForm, width, height);
+  }
+  if (state.modal === "confirm" && state.confirmDialog) {
+    return drawConfirmModal(lines, state.confirmDialog, width, height);
   }
 
   return lines.slice(0, height).join("\n");
