@@ -6,16 +6,34 @@ export interface RenderedPost {
   links: string[];
 }
 
-export function renderUbbToLines(content: string, width: number): RenderedPost {
+interface RenderOptions {
+  imagePreviewRows?: number;
+}
+
+export function renderUbbToLines(content: string, width: number, options: RenderOptions = {}): RenderedPost {
   const images: string[] = [];
   const links: string[] = [];
   let text = content.replace(/\r\n/g, "\n");
 
   text = text.replace(/\[img\]([\s\S]*?)\[\/img\]/gi, (_match, url: string) => {
-    const cleanUrl = url.trim();
+    const cleanUrl = normalizeImageUrl(url);
     images.push(cleanUrl);
     const index = images.length;
-    return `\n[image ${index}] ${shortUrl(cleanUrl)}\n          o 打开  c 复制链接  d 下载到缓存\n`;
+    return imageBlock(index, cleanUrl, options.imagePreviewRows);
+  });
+
+  text = text.replace(/\[upload(?:=[^\]]*)?\]([\s\S]*?)\[\/upload\]/gi, (_match, url: string) => {
+    const cleanUrl = normalizeImageUrl(url);
+    images.push(cleanUrl);
+    const index = images.length;
+    return imageBlock(index, cleanUrl, options.imagePreviewRows);
+  });
+
+  text = text.replace(/<img\b[^>]*\bsrc=(["']?)([^"'\s>]+)\1[^>]*>/gi, (_match, _quote: string, url: string) => {
+    const cleanUrl = normalizeImageUrl(url);
+    images.push(cleanUrl);
+    const index = images.length;
+    return imageBlock(index, cleanUrl, options.imagePreviewRows);
   });
 
   text = text.replace(/\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi, (_match, url: string, label: string) => {
@@ -62,6 +80,29 @@ function decodeHtml(value: string): string {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, "\"")
     .replace(/&#39;/g, "'");
+}
+
+function normalizeImageUrl(value: string): string {
+  const decoded = decodeHtml(value).trim();
+  if (!decoded) {
+    return decoded;
+  }
+  if (/^https?:\/\//i.test(decoded)) {
+    return decoded;
+  }
+  if (decoded.startsWith("//")) {
+    return `https:${decoded}`;
+  }
+  if (decoded.startsWith("/")) {
+    return `https://file.cc98.org${decoded}`;
+  }
+  return decoded;
+}
+
+function imageBlock(index: number, url: string, previewRows = 0): string {
+  const reservedRows = Math.max(0, Math.floor(previewRows));
+  const padding = reservedRows > 1 ? `\n${Array.from({ length: reservedRows - 1 }, () => "").join("\n")}` : "";
+  return `\n[image ${index}] ${shortUrl(url)}${padding}\n`;
 }
 
 function wrapLines(value: string, width: number): string[] {

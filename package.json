@@ -15,6 +15,7 @@
     "build": "tsc",
     "dev": "node --enable-source-maps dist/main.js",
     "check": "tsc --noEmit",
+    "image:test": "node scripts/render-image-test.mjs",
     "prepublishOnly": "npm run check && npm run build"
   },
   "repository": {

@@ -5,7 +5,9 @@ import {
 } from "./account-modal.js";
 import type { TuiConfig } from "../config.js";
 import { Canvas } from "./canvas.js";
+import { imagePreviewRows } from "./image-preview.js";
 import { center, fill, length, min, percentage, rect, split } from "./layout.js";
+import type { TerminalFrame, TerminalImageOverlay } from "./terminal.js";
 import { blank, cellWidth, fit, truncate, wrapText } from "./text.js";
 import { ruleLine, selectedLine, textStyle, theme } from "./theme.js";
 import {
@@ -20,7 +22,12 @@ import {
   type TuiState
 } from "./tui-model.js";
 
-export function draw(state: TuiState, size: { columns: number; rows: number }, config: TuiConfig): string {
+interface TopicDrawResult {
+  rows: string[];
+  imageOverlays: Array<{ row: number; token: string }>;
+}
+
+export function draw(state: TuiState, size: { columns: number; rows: number }, config: TuiConfig): TerminalFrame {
   const width = Math.max(1, size.columns);
   const height = Math.max(1, size.rows);
   const canvas = new Canvas(width, height);
@@ -31,7 +38,7 @@ export function draw(state: TuiState, size: { columns: number; rows: number }, c
       textStyle.muted("窗口太小"),
       textStyle.muted("q 退出")
     ]);
-    return canvas.toString();
+    return { text: canvas.toString() };
   }
 
   const root = rect(width, height);
@@ -74,10 +81,18 @@ export function draw(state: TuiState, size: { columns: number; rows: number }, c
   const rightRuleArea = showRight ? bodyColumns[3] : undefined;
   const rightArea = showRight ? bodyColumns[4] : undefined;
 
+  let imageOverlays: TerminalImageOverlay[] = [];
+
   if (sidebarArea.width > 0) {
     canvas.drawLines(sidebarArea, drawSidebar(state, sidebarArea.width, sidebarArea.height));
   }
-  canvas.drawLines(mainArea, drawMain(state, mainArea.width, mainArea.height, config));
+  const main = drawMain(state, mainArea.width, mainArea.height, config);
+  canvas.drawLines(mainArea, main.rows);
+  imageOverlays = main.imageOverlays.map((overlay) => ({
+    row: mainArea.y + overlay.row + 1,
+    column: mainArea.x + 2,
+    token: overlay.token
+  }));
   if (rightArea && rightRuleArea && rightArea.width > 0 && rightRuleArea.width > 0) {
     canvas.drawLines(rightArea, drawRight(state, rightArea.width, rightArea.height));
   }
@@ -94,22 +109,22 @@ export function draw(state: TuiState, size: { columns: number; rows: number }, c
 
   const baseLines = canvas.toLines();
   if (state.modal === "help") {
-    return drawHelpModal(baseLines, width, height);
+    return { text: drawHelpModal(baseLines, width, height) };
   }
   if (state.modal === "menu") {
-    return drawMenuModal(baseLines, state, width, height);
+    return { text: drawMenuModal(baseLines, state, width, height) };
   }
   if (state.modal === "account") {
-    return drawAccountModal(baseLines, state.accountModal, width, height);
+    return { text: drawAccountModal(baseLines, state.accountModal, width, height) };
   }
   if (state.modal === "login") {
-    return drawLoginModal(baseLines, state.loginForm, width, height);
+    return { text: drawLoginModal(baseLines, state.loginForm, width, height) };
   }
   if (state.modal === "confirm" && state.confirmDialog) {
-    return drawConfirmModal(baseLines, state.confirmDialog, width, height);
+    return { text: drawConfirmModal(baseLines, state.confirmDialog, width, height) };
   }
 
-  return canvas.toString();
+  return { text: canvas.toString(), imageOverlays };
 }
 
 function header(width: number, state: TuiState): string {
@@ -151,27 +166,27 @@ function drawSidebar(state: TuiState, width: number, height: number): string[] {
   return rows;
 }
 
-function drawMain(state: TuiState, width: number, height: number, config: TuiConfig): string[] {
+function drawMain(state: TuiState, width: number, height: number, config: TuiConfig): TopicDrawResult {
   if (state.mode === "topic") {
     return drawTopic(state, width, height);
   }
 
   if (state.loading) {
-    return [
+    return { rows: [
       textStyle.primaryBold(` ${state.viewTitle}`),
       fit(textStyle.muted(" 正在加载..."), width),
       ruleLine(Math.max(0, width - 1)),
       textStyle.muted(` ${"· ".repeat(Math.max(1, Math.floor((width - 2) / 2))).slice(0, width - 1)}`)
-    ].concat(blank(height - 4, width)).slice(0, height);
+    ].concat(blank(height - 4, width)).slice(0, height), imageOverlays: [] };
   }
 
   if (state.error) {
-    return [
+    return { rows: [
       textStyle.primaryBold(` ${state.viewTitle}`),
       ruleLine(Math.max(0, width - 1)),
       textStyle.danger(" 请求失败"),
       fit(` ${state.error}`, width)
-    ].concat(blank(height - 4, width)).slice(0, height);
+    ].concat(blank(height - 4, width)).slice(0, height), imageOverlays: [] };
   }
 
   const rows: string[] = [];
@@ -203,7 +218,7 @@ function drawMain(state: TuiState, width: number, height: number, config: TuiCon
     rows.push(fit(textStyle.muted(`  ↓ 还有 ${state.items.length - scroll - visibleCapacity} 项`), width));
   }
 
-  return rows.concat(blank(height - rows.length, width)).slice(0, height);
+  return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
 }
 
 function listItemTitle(itemValue: { title: string; detail?: string }, config: TuiConfig): string {
@@ -225,30 +240,31 @@ function getListScroll(state: TuiState, visibleCapacity: number): number {
   return current;
 }
 
-function drawTopic(state: TuiState, width: number, height: number): string[] {
+function drawTopic(state: TuiState, width: number, height: number): TopicDrawResult {
   if (state.loading && (!state.topic || state.topic.lines.length === 0)) {
-    return [
+    return { rows: [
       textStyle.primary(" 正在打开帖子..."),
       "",
       textStyle.muted(" 只加载第一页，不预取未读楼层。")
-    ].concat(blank(height - 3, width)).slice(0, height);
+    ].concat(blank(height - 3, width)).slice(0, height), imageOverlays: [] };
   }
 
   if (state.error) {
-    return [
+    return { rows: [
       textStyle.danger(" 读取帖子失败"),
       fit(` ${state.error}`, width),
       "",
       textStyle.muted(" h/Esc 返回列表")
-    ].concat(blank(height - 4, width)).slice(0, height);
+    ].concat(blank(height - 4, width)).slice(0, height), imageOverlays: [] };
   }
 
   const topic = state.topic;
   if (!topic) {
-    return blank(height, width);
+    return { rows: blank(height, width), imageOverlays: [] };
   }
 
   const rows: string[] = [];
+  const imageOverlays: Array<{ row: number; token: string }> = [];
   rows.push(textStyle.primaryBold(` ${topic.title}`));
   rows.push(fit(textStyle.muted(` ${topic.meta}`), width));
   rows.push(ruleLine(Math.max(0, width - 1)));
@@ -258,8 +274,14 @@ function drawTopic(state: TuiState, width: number, height: number): string[] {
   state.scroll = Math.min(state.scroll, maxScroll);
   const body = topic.lines.slice(state.scroll, state.scroll + viewport);
 
-  for (const bodyLine of body) {
-    if (bodyLine.startsWith("[image ")) {
+  for (let index = 0; index < body.length; index += 1) {
+    const bodyLine = body[index] ?? "";
+    const lineEntry = currentTopicLine(topic, state.scroll + index);
+    const imageFitsViewport = index + imagePreviewRows <= body.length;
+    if (lineEntry?.imagePreview && bodyLine.startsWith("[image ") && imageFitsViewport) {
+      imageOverlays.push({ row: rows.length, token: lineEntry.imagePreview });
+      rows.push(topicBodyLine("", width));
+    } else if (bodyLine.startsWith("[image ")) {
       rows.push(topicBodyLine(bodyLine, width, textStyle.primarySoft));
     } else if (bodyLine.startsWith(theme.quote.prefix)) {
       rows.push(topicBodyLine(bodyLine, width, textStyle.muted));
@@ -276,7 +298,10 @@ function drawTopic(state: TuiState, width: number, height: number): string[] {
     ? `已载入 ${topic.loaded} 楼，n 下一页`
     : `已载入 ${topic.loaded} 楼，已到底`;
   rows.push(fit(textStyle.muted(`${pageInfo}${state.loadingMore ? " · 加载中" : ""}`), width));
-  return rows.concat(blank(height - rows.length, width)).slice(0, height);
+  return {
+    rows: rows.concat(blank(height - rows.length, width)).slice(0, height),
+    imageOverlays
+  };
 }
 
 function topicBodyLine(content: string, width: number, style?: (value: string) => string): string {

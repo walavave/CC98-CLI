@@ -62,6 +62,19 @@ q                 退出
 
 左栏导航包含：十大、收藏、最新、版面、关注、消息、我的、设置。
 
+### 配置
+
+配置文件路径为 `~/.config/cc98-cli/config.toml`，未设置时使用默认值。
+
+```toml
+[tui]
+hide_top_chrome = false
+hide_right_panel = false
+preview_images = true
+```
+
+图片预览目前支持 Kitty graphics protocol 和 iTerm2 inline image。若终端不支持对应协议，会保留文本图片占位。
+
 ## CLI
 
 CLI 默认输出 JSON，适合配合 `jq` 或脚本使用。

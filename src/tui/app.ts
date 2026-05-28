@@ -9,6 +9,7 @@ import {
   updateLoginField
 } from "./account-modal.js";
 import { CachedCc98Client } from "./cached-client.js";
+import { imagePreviewRows, loadImagePreview, supportsImagePreview } from "./image-preview.js";
 import { draw } from "./renderer.js";
 import {
   currentTopicPost,
@@ -767,6 +768,7 @@ async function openTopic(
     state.status = reader.hasMore
       ? "j/k 滚动  n/Space 下一页  h/Esc 返回  r 刷新"
       : "j/k 滚动  h/Esc 返回  r 刷新";
+    void loadTopicImagePreviews(reader, render, config);
   } catch (error) {
     if (isAbortError(error)) {
       return;
@@ -985,11 +987,12 @@ async function loadNextTopicPage(
 
   try {
     const posts = asArray(await client.getTopicPosts(state.topic.topicId, state.topic.loaded, state.topic.size, false, signal));
-    const next = renderPosts(posts, Math.max(36, currentTopicWidthEstimate(config)), state.topic.lines.length);
+    const next = renderPosts(posts, Math.max(36, currentTopicWidthEstimate(config)), config, state.topic.lines.length);
     state.topic.lines.push(...next.lines);
     state.topic.posts.push(...next.posts);
     state.topic.imageCount += next.imageCount;
     state.topic.linkCount += next.linkCount;
+    void loadTopicImagePreviews(state.topic, render, config);
     state.topic.loaded += posts.length;
     state.topic.hasMore = posts.length === state.topic.size;
     if (advanceAfterLoad && posts.length > 0) {
@@ -1020,6 +1023,29 @@ function currentTopicWidthEstimate(config: TuiConfig): number {
   return Math.max(24, width - sidebarWidth - sidebarRuleWidth - 1 - rightWidth);
 }
 
+async function loadTopicImagePreviews(topic: TopicReaderState, render: () => void, config: TuiConfig): Promise<void> {
+  if (!config.previewImages || !supportsImagePreview()) {
+    return;
+  }
+
+  const width = Math.max(16, currentTopicWidthEstimate(config) - 2);
+  const imageLines = topic.posts
+    .flatMap((post) => post.lines)
+    .filter((line) => line.kind === "image" && line.imageUrl && !line.imagePreview);
+
+  for (const line of imageLines) {
+    try {
+      const preview = await loadImagePreview(line.imageUrl ?? "", width, imagePreviewRows);
+      if (preview) {
+        line.imagePreview = preview;
+        render();
+      }
+    } catch {
+      // Keep the textual image placeholder if preview loading fails.
+    }
+  }
+}
+
 function buildTopicReader(topicId: number, topic: Record<string, unknown>, posts: unknown[], size: number, config: TuiConfig): TopicReaderState {
   const title = String(topic.title ?? `#${topicId}`);
   const meta = [
@@ -1027,7 +1053,7 @@ function buildTopicReader(topicId: number, topic: Record<string, unknown>, posts
     topic.replyCount !== undefined ? `${topic.replyCount} 回复` : undefined,
     topic.hitCount !== undefined ? `${topic.hitCount} 浏览` : undefined
   ].filter(Boolean).join(" · ");
-  const rendered = renderPosts(posts, currentTopicWidthEstimate(config));
+  const rendered = renderPosts(posts, currentTopicWidthEstimate(config), config);
 
   return {
     topicId,
@@ -1044,7 +1070,7 @@ function buildTopicReader(topicId: number, topic: Record<string, unknown>, posts
   };
 }
 
-function renderPosts(posts: unknown[], width: number, lineOffset = 0): {
+function renderPosts(posts: unknown[], width: number, config: TuiConfig, lineOffset = 0): {
   lines: string[];
   posts: TopicPostEntry[];
   imageCount: number;
@@ -1088,7 +1114,9 @@ function renderPosts(posts: unknown[], width: number, lineOffset = 0): {
     push(theme.border.horizontal.repeat(contentWidth), "divider");
 
     const content = typeof post.content === "string" ? post.content : "";
-    const rendered = renderUbbToLines(content, contentWidth);
+    const rendered = renderUbbToLines(content, contentWidth, {
+      imagePreviewRows: config.previewImages && supportsImagePreview() ? imagePreviewRows : 0
+    });
     rendered.lines.forEach((renderedLine) => {
       const imageIndex = parseBracketIndex(renderedLine, "image");
       const linkIndex = parseBracketIndex(renderedLine, "link");
@@ -1166,12 +1194,13 @@ async function jumpToTopicFloor(
 
   try {
     const posts = asArray(await client.getTopicPosts(topic.topicId, from, topic.size, false, signal));
-    const next = renderPosts(posts, Math.max(36, currentTopicWidthEstimate(config)), topic.lines.length);
+    const next = renderPosts(posts, Math.max(36, currentTopicWidthEstimate(config)), config, topic.lines.length);
     topic.lines.push(...next.lines);
     topic.posts.push(...next.posts);
     topic.posts.sort((left, right) => (left.floor ?? 0) - (right.floor ?? 0));
     topic.imageCount += next.imageCount;
     topic.linkCount += next.linkCount;
+    void loadTopicImagePreviews(topic, render, config);
     topic.loaded = Math.max(topic.loaded, from + posts.length);
     topic.hasMore = posts.length === topic.size;
     const target = findTopicPostByFloor(topic, floor);

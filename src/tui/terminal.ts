@@ -1,9 +1,21 @@
 import { stdin, stdout } from "node:process";
-import { ansi } from "./ansi.js";
+import { ansi, moveTo } from "./ansi.js";
+import { getClearVisibleImageSequence, getImagePreviewSequence } from "./image-preview.js";
 
 export interface TerminalSize {
   columns: number;
   rows: number;
+}
+
+export interface TerminalImageOverlay {
+  row: number;
+  column: number;
+  token: string;
+}
+
+export interface TerminalFrame {
+  text: string;
+  imageOverlays?: TerminalImageOverlay[];
 }
 
 export type KeyHandler = (key: string) => void;
@@ -12,6 +24,7 @@ export type ResizeHandler = () => void;
 export class Terminal {
   private previousRawMode = false;
   private previousPaused = true;
+  private previousHadImageOverlays = false;
   private readonly keyHandlers = new Set<KeyHandler>();
   private readonly resizeHandlers = new Set<ResizeHandler>();
 
@@ -47,8 +60,24 @@ export class Terminal {
     };
   }
 
-  render(text: string): void {
-    stdout.write(`${ansi.clear}${ansi.home}${text}`);
+  render(frame: string | TerminalFrame): void {
+    const normalized = typeof frame === "string" ? { text: frame, imageOverlays: [] } : frame;
+    const hasImageOverlays = (normalized.imageOverlays?.length ?? 0) > 0;
+    if (this.previousHadImageOverlays || hasImageOverlays) {
+      const clearImages = getClearVisibleImageSequence();
+      if (clearImages) {
+        stdout.write(clearImages);
+      }
+    }
+    stdout.write(`${ansi.home}${normalized.text}`);
+    for (const overlay of normalized.imageOverlays ?? []) {
+      const sequence = getImagePreviewSequence(overlay.token);
+      if (sequence) {
+        stdout.write(`${moveTo(overlay.row, overlay.column)}${sequence}`);
+      }
+    }
+    this.previousHadImageOverlays = hasImageOverlays;
+    stdout.write(ansi.home);
   }
 
   onKey(handler: KeyHandler): () => void {

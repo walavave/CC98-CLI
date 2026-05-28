@@ -112,6 +112,7 @@ export interface TopicLineEntry {
   text: string;
   imageIndex?: number;
   imageUrl?: string;
+  imagePreview?: string;
   linkIndex?: number;
   linkUrl?: string;
 }
