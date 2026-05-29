@@ -8,18 +8,90 @@ import { getCacheDir } from "../storage/paths.js";
 
 export const imagePreviewRows = 8;
 
+export interface TerminalImageSize {
+  columns?: number;
+  rows?: number;
+}
+
+export interface LoadedTerminalImage {
+  token: string;
+  size: {
+    columns: number;
+    rows: number;
+  };
+}
+
 type ImageProtocol = "kitty" | "iterm2";
+interface ImagePixelSize {
+  width: number;
+  height: number;
+}
+
 const imagePreviewTokens = new Map<string, string>();
+const imagePixelSizeCache = new Map<string, ImagePixelSize>();
 let nextImagePreviewId = 1;
 const execFileAsync = promisify(execFile);
+const terminalCellAspectRatio = 0.4;
 
 export function supportsImagePreview(): boolean {
   return detectImageProtocol() !== undefined;
 }
 
-export async function loadImagePreview(url: string, columns: number, rows = imagePreviewRows): Promise<string | undefined> {
+export async function loadImagePreview(url: string, columns: number, rows?: number): Promise<LoadedTerminalImage | undefined> {
+  return loadTerminalImage(url, { columns, rows });
+}
+
+export async function loadModalImagePreview(
+  url: string,
+  columns: number,
+  rows: number
+): Promise<LoadedTerminalImage | undefined> {
+  return loadTerminalImage(url, { columns, rows });
+}
+
+export async function measureImagePreview(url: string, columns: number, rows?: number): Promise<LoadedTerminalImage["size"] | undefined> {
+  const resolved = await resolveTerminalImage(url, { columns, rows });
+  if (!resolved) {
+    return undefined;
+  }
+  return {
+    columns: Math.max(1, Math.floor(resolved.fittedSize.columns ?? 1)),
+    rows: Math.max(1, Math.floor(resolved.fittedSize.rows ?? 1))
+  };
+}
+
+async function loadTerminalImage(url: string, size: TerminalImageSize): Promise<LoadedTerminalImage | undefined> {
   const protocol = detectImageProtocol();
-  if (!protocol || !/^https?:\/\//i.test(url) || !isPreviewableImageUrl(url)) {
+  if (!protocol) {
+    return undefined;
+  }
+
+  const resolved = await resolveTerminalImage(url, size);
+  if (!resolved) {
+    return undefined;
+  }
+  const { data, fittedSize } = resolved;
+
+  let sequence: string;
+  if (protocol === "kitty") {
+    sequence = wrapTerminalSequence(kittyImage(data, fittedSize));
+  } else {
+    sequence = wrapTerminalSequence(iterm2Image(data, fittedSize));
+  }
+  return {
+    token: registerImagePreview(sequence),
+    size: {
+      columns: Math.max(1, Math.floor(fittedSize.columns ?? 1)),
+      rows: Math.max(1, Math.floor(fittedSize.rows ?? 1))
+    }
+  };
+}
+
+async function resolveTerminalImage(
+  url: string,
+  size: TerminalImageSize
+): Promise<{ data: Buffer; fittedSize: TerminalImageSize } | undefined> {
+  if (!/^https?:\/\//i.test(url) || !isPreviewableImageUrl(url)) {
     return undefined;
   }
 
@@ -28,16 +100,11 @@ export async function loadImagePreview(url: string, columns: number, rows = imag
     return undefined;
   }
   const renderPath = await ensureRenderableImage(sourcePath);
-
-  let sequence: string;
-  if (protocol === "kitty") {
-    const data = await readFile(renderPath);
-    sequence = wrapTerminalSequence(kittyImage(data, rows));
-  } else {
-    const data = await readFile(renderPath);
-    sequence = wrapTerminalSequence(iterm2Image(data, rows));
-  }
-  return registerImagePreview(sequence);
+  const data = await readFile(renderPath);
+  return {
+    data,
+    fittedSize: fitTerminalImageSize(renderPath, data, size)
+  };
 }
 
 function detectImageProtocol(): ImageProtocol | undefined {
@@ -89,6 +156,47 @@ async function ensureRenderableImage(path: string): Promise<string> {
   }
 }
 
+function fitTerminalImageSize(path: string, data: Buffer, bounds: TerminalImageSize): TerminalImageSize {
+  const pixelSize = getImagePixelSize(path, data);
+  const maxColumns = Math.max(1, Math.floor(bounds.columns ?? 0) || Number.MAX_SAFE_INTEGER);
+  const maxRows = Math.max(1, Math.floor(bounds.rows ?? 0) || Number.MAX_SAFE_INTEGER);
+  const pixelWidthPerColumn = terminalCellAspectRatio;
+  const widthLimitedRows = Math.max(1, Math.floor((maxColumns * pixelWidthPerColumn * pixelSize.height) / pixelSize.width));
+
+  if (widthLimitedRows <= maxRows) {
+    return {
+      columns: maxColumns,
+      rows: widthLimitedRows
+    };
+  }
+
+  const heightLimitedColumns = Math.max(1, Math.floor((maxRows * pixelSize.width) / (pixelSize.height * pixelWidthPerColumn)));
+  return {
+    columns: Math.min(maxColumns, heightLimitedColumns),
+    rows: maxRows
+  };
+}
+
+function getImagePixelSize(path: string, data: Buffer): ImagePixelSize {
+  const cached = imagePixelSizeCache.get(path);
+  if (cached) {
+    return cached;
+  }
+  if (data.length < 24 || data.toString("ascii", 1, 4) !== "PNG") {
+    throw new Error("failed to read png size");
+  }
+
+  const width = data.readUInt32BE(16);
+  const height = data.readUInt32BE(20);
+  if (width <= 0 || height <= 0) {
+    throw new Error("failed to read png size");
+  }
+
+  const size = { width, height };
+  imagePixelSizeCache.set(path, size);
+  return size;
+}
+
 function imageCachePath(url: string): string {
   const hash = createHash("sha256").update(url).digest("hex");
   const pathname = new URL(url).pathname;
@@ -104,16 +212,32 @@ function isPreviewableImageUrl(url: string): boolean {
   }
 }
 
-function kittyImage(data: Buffer, rows: number): string {
+function kittyImage(data: Buffer, size: TerminalImageSize): string {
   const payload = data.toString("base64");
-  const h = Math.max(1, Math.floor(rows));
-  return `\x1b_Gf=100,a=T,t=d,r=${h};${payload}\x1b\\`;
+  const args = ["f=100", "a=T", "t=d"];
+  const columns = Math.floor(size.columns ?? 0);
+  const rows = Math.floor(size.rows ?? 0);
+  if (columns > 0) {
+    args.push(`c=${columns}`);
+  }
+  if (rows > 0) {
+    args.push(`r=${rows}`);
+  }
+  return `\x1b_G${args.join(",")};${payload}\x1b\\`;
 }
 
-function iterm2Image(data: Buffer, rows: number): string {
+function iterm2Image(data: Buffer, size: TerminalImageSize): string {
   const payload = data.toString("base64");
-  const height = Math.max(1, Math.floor(rows));
-  return `\x1b]1337;File=inline=1;height=${height};preserveAspectRatio=1:${payload}\x07`;
+  const args = ["inline=1", "preserveAspectRatio=1"];
+  const columns = Math.floor(size.columns ?? 0);
+  const rows = Math.floor(size.rows ?? 0);
+  if (columns > 0) {
+    args.push(`width=${columns}`);
+  }
+  if (rows > 0) {
+    args.push(`height=${rows}`);
+  }
+  return `\x1b]1337;File=${args.join(";")}:${payload}\x07`;
 }
 
 function wrapTerminalSequence(sequence: string): string {

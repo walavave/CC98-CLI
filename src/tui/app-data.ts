@@ -1,7 +1,7 @@
 import type { TuiConfig } from "../config.js";
 import { TokenStore } from "../storage/token-store.js";
 import { appVersion } from "../version.js";
-import { imagePreviewRows, loadImagePreview, supportsImagePreview } from "./image-preview.js";
+import { imagePreviewRows, loadImagePreview, measureImagePreview, supportsImagePreview } from "./image-preview.js";
 import { getSidebarWidth } from "./renderer.js";
 import { theme } from "./theme.js";
 import {
@@ -32,6 +32,7 @@ export async function openTopic(
   state.loadingMore = false;
   state.error = undefined;
   state.scroll = 0;
+  state.imageViewer = undefined;
   state.topic = {
     topicId,
     title: `#${topicId}`,
@@ -58,10 +59,7 @@ export async function openTopic(
     const reader = buildTopicReader(topicId, topic, posts, 10, config);
     state.topic = reader;
     state.viewTitle = reader.title;
-    state.status = reader.hasMore
-      ? "j/k 滚动  n/Space 下一页  h/Esc 返回  r 刷新"
-      : "j/k 滚动  h/Esc 返回  r 刷新";
-    void loadTopicImagePreviews(reader, render, config, state.sidebarWidth);
+    void loadTopicImagePreviews(state, render, config, state.sidebarWidth);
   } catch (error) {
     if (isAbortError(error)) {
       return;
@@ -72,6 +70,9 @@ export async function openTopic(
       : "版面读取失败；h 返回左栏  r 重试";
   } finally {
     state.loading = false;
+    if (!state.error && state.mode === "topic" && state.topic) {
+      state.status = getStatus(state);
+    }
     render();
   }
 }
@@ -285,15 +286,12 @@ export async function loadNextTopicPage(
     state.topic.posts.push(...next.posts);
     state.topic.imageCount += next.imageCount;
     state.topic.linkCount += next.linkCount;
-    void loadTopicImagePreviews(state.topic, render, config, state.sidebarWidth);
+    void loadTopicImagePreviews(state, render, config, state.sidebarWidth);
     state.topic.loaded += posts.length;
     state.topic.hasMore = posts.length === state.topic.size;
     if (advanceAfterLoad && posts.length > 0) {
       state.scroll = Math.min(Math.max(0, state.topic.lines.length - 1), state.scroll + 1);
     }
-    state.status = state.topic.hasMore
-      ? "j/k 滚动  n/Space 下一页  h/Esc 返回  r 刷新"
-      : "已到最后一页  j/k 滚动  h/Esc 返回  r 刷新";
   } catch (error) {
     if (isAbortError(error)) {
       return;
@@ -301,6 +299,9 @@ export async function loadNextTopicPage(
     state.error = error instanceof Error ? error.message : String(error);
   } finally {
     state.loadingMore = false;
+    if (!state.error && state.mode === "topic" && state.topic) {
+      state.status = getStatus(state);
+    }
     render();
   }
 }
@@ -339,13 +340,12 @@ export async function jumpToTopicFloor(
     topic.posts.sort((left, right) => (left.floor ?? 0) - (right.floor ?? 0));
     topic.imageCount += next.imageCount;
     topic.linkCount += next.linkCount;
-    void loadTopicImagePreviews(topic, render, config, state.sidebarWidth);
+    void loadTopicImagePreviews(state, render, config, state.sidebarWidth);
     topic.loaded = Math.max(topic.loaded, from + posts.length);
     topic.hasMore = posts.length === topic.size;
     const target = findTopicPostByFloor(topic, floor);
     if (target) {
       state.scroll = target.lineStart;
-      state.status = getStatus(state);
     } else {
       state.status = `未找到 ${floor} 楼`;
     }
@@ -355,6 +355,9 @@ export async function jumpToTopicFloor(
     }
   } finally {
     state.loadingMore = false;
+    if (!state.error && findTopicPostByFloor(topic, floor)) {
+      state.status = getStatus(state);
+    }
     render();
   }
 }
@@ -564,25 +567,54 @@ function currentTopicWidthEstimate(config: TuiConfig, sidebarWidthOverride?: num
 }
 
 async function loadTopicImagePreviews(
-  topic: TopicReaderState,
+  state: TuiState,
   render: () => void,
   config: TuiConfig,
   sidebarWidthOverride?: number
 ): Promise<void> {
-  if (!config.previewImages || !supportsImagePreview()) {
+  const topic = state.topic;
+  if (!topic || !config.previewImages) {
     return;
   }
 
-  const width = Math.max(16, currentTopicWidthEstimate(config, sidebarWidthOverride) - 2);
+  const width = Math.max(12, currentTopicWidthEstimate(config, sidebarWidthOverride) - 4);
+  const maxRows = imagePreviewRows;
   const imageLines = topic.posts
     .flatMap((post) => post.lines)
-    .filter((line) => line.kind === "image" && line.imageUrl && !line.imagePreview);
+    .filter((line) => line.kind === "image" && line.imageUrl);
+  const previewEnabled = supportsImagePreview();
 
   for (const line of imageLines) {
     try {
-      const preview = await loadImagePreview(line.imageUrl ?? "", width, imagePreviewRows);
+      if (state.topic !== topic) {
+        return;
+      }
+
+      if (!line.imagePreviewRows) {
+        const measured = await measureImagePreview(line.imageUrl ?? "", width, maxRows);
+        if (state.topic !== topic) {
+          return;
+        }
+        if (measured) {
+          line.imagePreviewRows = measured.rows;
+          adjustTopicImageBlockHeight(topic, line, measured.rows, state);
+          render();
+        }
+      }
+
+      if (!previewEnabled || line.imagePreview) {
+        continue;
+      }
+
+      const rows = Math.max(1, Math.min(maxRows, line.imagePreviewRows ?? line.imageBlockRows ?? imagePreviewRows));
+      const preview = await loadImagePreview(line.imageUrl ?? "", width, rows);
+      if (state.topic !== topic) {
+        return;
+      }
       if (preview) {
-        line.imagePreview = preview;
+        line.imagePreview = preview.token;
+        line.imagePreviewRows = preview.size.rows;
+        adjustTopicImageBlockHeight(topic, line, preview.size.rows, state);
         render();
       }
     } catch {
@@ -673,14 +705,15 @@ function renderPosts(
     const contentType = asNumber(post.contentType) ?? 0;
     const rendered = contentType === 1
       ? renderMarkdownToLines(content, contentWidth, {
-        imagePreviewRows: config.previewImages && supportsImagePreview() ? imagePreviewRows : 0
+        imagePreviewRows: config.previewImages ? imagePreviewRows : 0
       })
       : renderUbbToLines(content, contentWidth, {
-        imagePreviewRows: config.previewImages && supportsImagePreview() ? imagePreviewRows : 0
+        imagePreviewRows: config.previewImages ? imagePreviewRows : 0
       });
-    rendered.lines.forEach((renderedLine) => {
+    rendered.lines.forEach((renderedLine, index) => {
       const imageIndex = parseBracketIndex(renderedLine, "image");
       const linkIndex = parseBracketIndex(renderedLine, "link");
+      const imageBlockRows = imageIndex !== undefined ? imageBlockHeight(rendered.lines, index) : undefined;
       const kind = renderedLine.trim() === ""
         ? "blank"
         : imageIndex !== undefined
@@ -693,6 +726,7 @@ function renderPosts(
       push(renderedLine, kind, {
         imageIndex,
         imageUrl: imageIndex !== undefined ? rendered.images[imageIndex - 1] : undefined,
+        imageBlockRows,
         linkIndex,
         linkUrl: linkIndex !== undefined ? rendered.links[linkIndex - 1] : undefined
       });
@@ -729,6 +763,71 @@ function renderPosts(
 
 function findTopicPostByFloor(topic: TopicReaderState, floor: number): TopicPostEntry | undefined {
   return topic.posts.find((entry) => entry.floor === floor);
+}
+
+function imageBlockHeight(lines: string[], start: number): number {
+  let height = 1;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    if (line.startsWith("[image ") || line.trim() !== "") {
+      break;
+    }
+    height += 1;
+  }
+  return height;
+}
+
+function adjustTopicImageBlockHeight(
+  topic: TopicReaderState,
+  line: TopicLineEntry,
+  nextRows: number,
+  state: TuiState
+): void {
+  const post = topic.posts.find((entry) => entry.lines.includes(line));
+  if (!post) {
+    return;
+  }
+
+  const startRow = line.row;
+  const currentRows = Math.max(1, line.imageBlockRows ?? 1);
+  const targetRows = Math.max(1, nextRows);
+  if (currentRows === targetRows) {
+    line.imageBlockRows = targetRows;
+    return;
+  }
+
+  const originalLine = line.line;
+  const removeCount = Math.min(currentRows, Math.max(1, post.lines.length - startRow));
+  const delta = targetRows - currentRows;
+  const filler = Array.from({ length: targetRows - 1 }, (): TopicLineEntry => ({
+    line: 0,
+    row: 0,
+    floor: line.floor,
+    kind: "blank",
+    text: ""
+  }));
+
+  line.imageBlockRows = targetRows;
+  post.lines.splice(startRow, removeCount, line, ...filler);
+  rebuildTopicLines(topic);
+
+  if (originalLine < state.scroll) {
+    state.scroll = Math.max(0, state.scroll + delta);
+  }
+}
+
+function rebuildTopicLines(topic: TopicReaderState): void {
+  const lines: string[] = [];
+  topic.posts.forEach((post) => {
+    post.lineStart = lines.length;
+    post.lines.forEach((entry, row) => {
+      entry.row = row;
+      entry.line = lines.length;
+      lines.push(entry.text);
+    });
+    post.lineEnd = Math.max(post.lineStart, lines.length - 1);
+  });
+  topic.lines = lines;
 }
 
 function parseBracketIndex(value: string, label: "image" | "link"): number | undefined {

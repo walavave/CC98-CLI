@@ -6,7 +6,7 @@ import type {
 
 export type ViewId = "hot" | "new" | "boards" | "following" | "favorite" | "messages" | "me" | "settings";
 export type FocusColumn = "nav" | "content";
-export type ModalType = "menu" | "help" | "account" | "login" | "confirm" | null;
+export type ModalType = "menu" | "help" | "account" | "login" | "confirm" | "image" | null;
 
 export interface NavItem {
   id: ViewId;
@@ -55,6 +55,7 @@ export interface TuiState {
   accountModal: AccountModalState;
   loginForm: LoginFormState;
   confirmDialog?: ConfirmDialogState;
+  imageViewer?: ImageViewerState;
 }
 
 export interface ListSnapshot {
@@ -92,6 +93,18 @@ export interface TopicReaderState {
   floorInput: string;
 }
 
+export interface ImageViewerState {
+  images: string[];
+  index: number;
+  token?: string;
+  renderSize?: {
+    columns: number;
+    rows: number;
+  };
+  loading: boolean;
+  error?: string;
+}
+
 export interface TopicPostEntry {
   id?: number;
   floor?: number;
@@ -119,6 +132,8 @@ export interface TopicLineEntry {
   imageIndex?: number;
   imageUrl?: string;
   imagePreview?: string;
+  imagePreviewRows?: number;
+  imageBlockRows?: number;
   linkIndex?: number;
   linkUrl?: string;
 }

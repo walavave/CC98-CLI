@@ -58,7 +58,8 @@ export async function runTui(): Promise<void> {
       accounts: [],
       selectedIndex: 0
     },
-    loginForm: createLoginForm()
+    loginForm: createLoginForm(),
+    imageViewer: undefined
   };
 
   terminal.enter();
@@ -75,7 +76,11 @@ export async function runTui(): Promise<void> {
         return currentAbort.signal;
       };
       const abortCurrent = () => currentAbort?.abort();
-      const render = () => terminal.render(draw(state, terminal.size(), config.tui));
+      const render = () => {
+        if (!closed) {
+          terminal.render(draw(state, terminal.size(), config.tui));
+        }
+      };
       const load = async (force = false) => {
         const version = ++loadVersion;
         const signal = nextSignal();
@@ -93,6 +98,7 @@ export async function runTui(): Promise<void> {
         state.items = [];
         state.stats = [];
         state.topic = undefined;
+        state.imageViewer = undefined;
         state.parentList = undefined;
         state.currentBoard = undefined;
         state.currentChat = undefined;

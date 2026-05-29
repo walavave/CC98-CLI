@@ -14,11 +14,12 @@ import {
   refreshAccounts,
   restoreParentList
 } from "./app-data.js";
+import { loadModalImagePreview, supportsImagePreview } from "./image-preview.js";
 import { getMenuItems } from "./interactions.js";
 import { fill, length, min, pad, percentage, rect, split } from "./layout.js";
 import { getSidebarWidth } from "./renderer.js";
 import { downloadUrlToDownloads } from "./downloads.js";
-import { getStatus, navItems, settingsItems, type TuiState } from "./tui-model.js";
+import { currentTopicLine, currentTopicPost, getStatus, navItems, settingsItems, type TuiState } from "./tui-model.js";
 import type { CachedCc98Client } from "./cached-client.js";
 import type { Cc98Client } from "../api/client.js";
 import type { TokenStore } from "../storage/token-store.js";
@@ -46,6 +47,16 @@ export function createMouseHandler(
   getDividerColumn: () => number,
   getSize: () => { columns: number; rows: number }
 ): (event: MouseEvent) => void {
+  let pendingScrollRender: ReturnType<typeof setTimeout> | undefined;
+  const scheduleScrollRender = () => {
+    if (pendingScrollRender) {
+      clearTimeout(pendingScrollRender);
+    }
+    pendingScrollRender = setTimeout(() => {
+      pendingScrollRender = undefined;
+      context.render();
+    }, 80);
+  };
   return (event) => {
     const { state, render } = context;
     if (state.modal) {
@@ -59,12 +70,12 @@ export function createMouseHandler(
     const withinFrame = event.row >= 2 && event.row < size.rows - 1;
     if (event.kind === "down" && event.button === "wheel-up") {
       handleScroll(state, -3);
-      render();
+      scheduleScrollRender();
       return;
     }
     if (event.kind === "down" && event.button === "wheel-down") {
       handleScroll(state, 3);
-      render();
+      scheduleScrollRender();
       return;
     }
     if (event.kind === "down" && event.button === "left" && withinFrame && event.column === dividerColumn) {
@@ -126,6 +137,11 @@ export function createKeyHandler(context: RuntimeContext): (key: string) => void
 
     if (state.modal === "confirm") {
       handleConfirmModal(context, key);
+      return;
+    }
+
+    if (state.modal === "image") {
+      handleImageModal(context, key);
       return;
     }
 
@@ -398,25 +414,39 @@ function handleConfirmModal(context: RuntimeContext, key: string): void {
 
 function handleTopicMode(context: RuntimeContext, key: string, keyAction: string | undefined): void {
   const { state, render, client, config, nextSignal, abortCurrent } = context;
-  if (/^\d$/.test(key) && state.topic) {
-    state.topic.floorInput = `${state.topic.floorInput}${key}`.slice(0, 6);
-    state.status = `跳转到 ${state.topic.floorInput} 楼：Enter 确认  Esc 取消`;
+  if (key === ":" && state.topic && !state.topic.floorInput) {
+    state.topic.floorInput = ":";
+    state.status = "跳转到楼层：输入数字后 Enter 确认  Esc 取消";
+    render();
+    return;
+  }
+  if (/^\d$/.test(key) && state.topic?.floorInput.startsWith(":")) {
+    if (state.topic.floorInput === ":" && key === "0") {
+      return;
+    }
+    state.topic.floorInput = `${state.topic.floorInput}${key}`.slice(0, 7);
+    state.status = `跳转到 ${state.topic.floorInput.slice(1)} 楼：Enter 确认  Esc 取消`;
     render();
     return;
   }
   if (key === "\x7f" && state.topic?.floorInput) {
     state.topic.floorInput = state.topic.floorInput.slice(0, -1);
     state.status = state.topic.floorInput
-      ? `跳转到 ${state.topic.floorInput} 楼：Enter 确认  Esc 取消`
+      ? state.topic.floorInput === ":"
+        ? "跳转到楼层：输入数字后 Enter 确认  Esc 取消"
+        : `跳转到 ${state.topic.floorInput.slice(1)} 楼：Enter 确认  Esc 取消`
       : getStatus(state);
     render();
     return;
   }
   if (key === "\r" && state.topic?.floorInput) {
-    const floor = Number(state.topic.floorInput);
+    const floor = Number(state.topic.floorInput.slice(1));
     state.topic.floorInput = "";
     if (Number.isInteger(floor) && floor > 0) {
       void jumpToTopicFloor(client, state, floor, render, config, nextSignal());
+    } else {
+      state.status = getStatus(state);
+      render();
     }
     return;
   }
@@ -448,6 +478,7 @@ function handleTopicMode(context: RuntimeContext, key: string, keyAction: string
     const maxScroll = Math.max(0, (state.topic?.lines.length ?? 0) - 1);
     const wasAtEnd = state.scroll >= maxScroll;
     state.scroll = Math.min(maxScroll, state.scroll + 1);
+    state.status = getStatus(state);
     render();
     if (wasAtEnd && state.topic?.hasMore && !state.loadingMore) {
       void loadNextTopicPage(client, state, render, config, nextSignal(), true);
@@ -456,11 +487,20 @@ function handleTopicMode(context: RuntimeContext, key: string, keyAction: string
   }
   if (key === "k" || key === "\x1b[A") {
     state.scroll = Math.max(0, state.scroll - 1);
+    state.status = getStatus(state);
     render();
     return;
   }
-  if (key === "n" || key === " ") {
+  if (key === " ") {
+    void openTopicImageViewer(context);
+    return;
+  }
+  if (key === "n") {
     void loadNextTopicPage(client, state, render, config, nextSignal());
+    return;
+  }
+  if (key === "\x1b[C") {
+    void stepTopicImageViewer(context, 1);
     return;
   }
   if (key === "r") {
@@ -475,6 +515,118 @@ function handleTopicMode(context: RuntimeContext, key: string, keyAction: string
     state.menuIndex = 0;
     render();
   }
+}
+
+function handleImageModal(context: RuntimeContext, key: string): void {
+  const { state, render } = context;
+  if (!state.imageViewer) {
+    state.modal = null;
+    render();
+    return;
+  }
+  if (key === " " || key === "\x1b" || key === "h" || key === "\r") {
+    state.modal = null;
+    state.status = getStatus(state);
+    render();
+    return;
+  }
+  if (key === "\x1b[C" || key === "l") {
+    void stepTopicImageViewer(context, 1);
+    return;
+  }
+  if (key === "\x1b[D" || key === "k") {
+    void stepTopicImageViewer(context, -1);
+    return;
+  }
+}
+
+async function openTopicImageViewer(context: RuntimeContext): Promise<void> {
+  const { state, render } = context;
+  const topic = state.topic;
+  if (!topic) {
+    return;
+  }
+  if (!supportsImagePreview()) {
+    state.status = "当前终端不支持图片大图预览";
+    render();
+    return;
+  }
+
+  const images = topic.posts.flatMap((post) => post.images);
+  if (images.length === 0) {
+    state.status = "当前帖子没有可预览的图片";
+    render();
+    return;
+  }
+
+  const currentLine = currentTopicLine(topic, state.scroll);
+  const currentPost = currentTopicPost(topic, state.scroll);
+  const targetUrl = currentLine?.imageUrl ?? currentPost?.images[0] ?? images[0];
+  const index = Math.max(0, images.findIndex((url) => url === targetUrl));
+  state.imageViewer = {
+    images,
+    index,
+    loading: true
+  };
+  state.modal = "image";
+  render();
+  await refreshTopicImageViewer(context, index);
+}
+
+async function stepTopicImageViewer(context: RuntimeContext, delta: number): Promise<void> {
+  const viewer = context.state.imageViewer;
+  if (!viewer || viewer.images.length === 0) {
+    return;
+  }
+  const nextIndex = Math.min(viewer.images.length - 1, Math.max(0, viewer.index + delta));
+  if (nextIndex === viewer.index && viewer.token) {
+    return;
+  }
+  viewer.index = nextIndex;
+  viewer.loading = true;
+  viewer.error = undefined;
+  viewer.token = undefined;
+  viewer.renderSize = undefined;
+  context.state.modal = "image";
+  context.render();
+  await refreshTopicImageViewer(context, nextIndex);
+}
+
+async function refreshTopicImageViewer(context: RuntimeContext, index: number): Promise<void> {
+  const { state, render } = context;
+  const viewer = state.imageViewer;
+  if (!viewer) {
+    return;
+  }
+
+  const terminalSize = process.stdout.isTTY
+    ? { columns: process.stdout.columns || 80, rows: process.stdout.rows || 24 }
+    : { columns: 80, rows: 24 };
+  const modalWidth = Math.max(24, Math.min(terminalSize.columns - 4, Math.floor(terminalSize.columns * 0.92)));
+  const modalHeight = Math.max(10, Math.min(terminalSize.rows - 2, Math.floor(terminalSize.rows * 0.9)));
+  const maxColumns = Math.max(1, modalWidth - 2);
+  const maxRows = Math.max(1, modalHeight - 2);
+  const url = viewer.images[index];
+
+  try {
+    const loadedImage = await loadModalImagePreview(url ?? "", maxColumns, maxRows);
+    if (!state.imageViewer || state.imageViewer.index !== index) {
+      return;
+    }
+    state.imageViewer.loading = false;
+    state.imageViewer.token = loadedImage?.token;
+    state.imageViewer.renderSize = loadedImage?.size;
+    state.imageViewer.error = loadedImage ? undefined : "当前终端无法显示这张图片";
+  } catch (error) {
+    if (!state.imageViewer || state.imageViewer.index !== index) {
+      return;
+    }
+    state.imageViewer.loading = false;
+    state.imageViewer.token = undefined;
+    state.imageViewer.renderSize = undefined;
+    state.imageViewer.error = error instanceof Error ? error.message : "图片加载失败";
+  }
+  render();
 }
 
 function leaveTopicMode(state: TuiState): void {

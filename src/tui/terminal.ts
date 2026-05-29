@@ -32,6 +32,7 @@ export class Terminal {
   private previousRawMode = false;
   private previousPaused = true;
   private previousHadImageOverlays = false;
+  private inputBuffer = "";
   private readonly keyHandlers = new Set<KeyHandler>();
   private readonly mouseHandlers = new Set<MouseHandler>();
   private readonly resizeHandlers = new Set<ResizeHandler>();
@@ -104,21 +105,37 @@ export class Terminal {
   }
 
   private readonly handleData = (chunk: Buffer | string): void => {
-    const key = chunk.toString("utf8");
-    const mouse = parseMouseEvent(key);
-    if (mouse) {
-      for (const handler of this.mouseHandlers) {
-        handler(mouse);
-      }
-      return;
-    }
-    for (const handler of this.keyHandlers) {
-      if (key.length > 1 && !key.startsWith("\x1b")) {
-        for (const char of key) {
-          handler(char);
+    this.inputBuffer += chunk.toString("utf8");
+
+    while (this.inputBuffer.length > 0) {
+      const mouseSequence = consumeMouseSequence(this.inputBuffer);
+      if (mouseSequence?.complete) {
+        this.inputBuffer = this.inputBuffer.slice(mouseSequence.sequence.length);
+        for (const handler of this.mouseHandlers) {
+          handler(mouseSequence.event);
         }
-      } else {
-        handler(key);
+        continue;
+      }
+      if (mouseSequence) {
+        return;
+      }
+
+      const escapeSequence = consumeEscapeSequence(this.inputBuffer);
+      if (escapeSequence?.complete) {
+        this.inputBuffer = this.inputBuffer.slice(escapeSequence.sequence.length);
+        for (const handler of this.keyHandlers) {
+          handler(escapeSequence.sequence);
+        }
+        continue;
+      }
+      if (escapeSequence) {
+        return;
+      }
+
+      const char = this.inputBuffer[0] ?? "";
+      this.inputBuffer = this.inputBuffer.slice(1);
+      for (const handler of this.keyHandlers) {
+        handler(char);
       }
     }
   };
@@ -147,4 +164,41 @@ function parseMouseEvent(input: string): MouseEvent | undefined {
     : buttonCode === 0 ? "left" : buttonCode === 1 ? "middle" : "right";
   const kind: MouseEvent["kind"] = suffix === "m" ? "up" : dragging ? "drag" : "down";
   return { kind, button, row, column };
+}
+
+function consumeMouseSequence(input: string): { complete: true; sequence: string; event: MouseEvent } | { complete: false } | undefined {
+  if (!input.startsWith("\x1b[<")) {
+    return undefined;
+  }
+  const match = /^\x1b\[<\d+;\d+;\d+[Mm]/.exec(input);
+  if (!match) {
+    return isMouseSequencePrefix(input) ? { complete: false } : undefined;
+  }
+  const sequence = match[0] ?? "";
+  const event = parseMouseEvent(sequence);
+  if (!event) {
+    return undefined;
+  }
+  return { complete: true, sequence, event };
+}
+
+function isMouseSequencePrefix(input: string): boolean {
+  return /^\x1b\[<\d*(?:;\d*){0,2}$/.test(input);
+}
+
+function consumeEscapeSequence(input: string): { complete: true; sequence: string } | { complete: false } | undefined {
+  if (!input.startsWith("\x1b")) {
+    return undefined;
+  }
+  if (input === "\x1b") {
+    return { complete: false };
+  }
+  if (input.startsWith("\x1b[<")) {
+    return isMouseSequencePrefix(input) ? { complete: false } : undefined;
+  }
+  const match = /^\x1b(?:\[[0-9;?]*[A-Za-z~]|.)/.exec(input);
+  if (!match) {
+    return { complete: false };
+  }
+  return { complete: true, sequence: match[0] ?? "\x1b" };
 }

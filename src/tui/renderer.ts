@@ -142,6 +142,9 @@ export function draw(state: TuiState, size: { columns: number; rows: number }, c
   if (state.modal === "confirm" && state.confirmDialog) {
     return { text: drawConfirmModal(baseLines, state.confirmDialog, width, height) };
   }
+  if (state.modal === "image" && state.imageViewer) {
+    return drawImageModal(baseLines, state, width, height);
+  }
 
   return { text: canvas.toString(), imageOverlays };
 }
@@ -303,10 +306,17 @@ function drawTopic(state: TuiState, width: number, height: number): TopicDrawRes
   for (let index = 0; index < body.length; index += 1) {
     const bodyLine = body[index] ?? "";
     const lineEntry = currentTopicLine(topic, state.scroll + index);
-    const imageFitsViewport = index + imagePreviewRows <= body.length;
-    if (lineEntry?.imagePreview && bodyLine.startsWith("[image ") && imageFitsViewport) {
-      imageOverlays.push({ row: rows.length, token: lineEntry.imagePreview });
-      rows.push(topicBodyLine("", width));
+    const imagePreview = lineEntry?.imagePreview;
+    const previewHeight = Math.max(1, lineEntry?.imagePreviewRows ?? imagePreviewRows);
+    const placeholderHeight = Math.max(1, lineEntry?.imageBlockRows ?? imagePlaceholderHeight(body, index));
+    const imageFitsViewport = imagePreview !== undefined &&
+      bodyLine.startsWith("[image ") &&
+      previewHeight <= placeholderHeight &&
+      index + placeholderHeight <= body.length;
+    if (imageFitsViewport) {
+      imageOverlays.push({ row: rows.length, token: imagePreview });
+      rows.push(...Array.from({ length: placeholderHeight }, () => topicBodyLine("", width)));
+      index += placeholderHeight - 1;
     } else if (bodyLine.startsWith("[image ")) {
       rows.push(topicBodyLine(bodyLine, width, textStyle.primarySoft));
     } else if (bodyLine.startsWith(theme.quote.prefix)) {
@@ -334,6 +344,18 @@ function topicBodyLine(content: string, width: number, style?: (value: string) =
   const innerWidth = Math.max(0, width - 2);
   const padded = fit(content, innerWidth);
   return fit(` ${style ? style(padded) : padded} `, width);
+}
+
+function imagePlaceholderHeight(body: string[], start: number): number {
+  let height = 1;
+  for (let index = start + 1; index < body.length; index += 1) {
+    const line = body[index] ?? "";
+    if (line.startsWith("[image ") || line.trim() !== "") {
+      break;
+    }
+    height += 1;
+  }
+  return height;
 }
 
 function isTopicDivider(content: string): boolean {
@@ -364,9 +386,7 @@ function isNotificationStatus(status: string): boolean {
 
 function getKeyHints(state: TuiState): string {
   const hints = ["j/k ↑↓ 移动", "h← 返回", "l→ 进入", "Enter 确认"];
-  if (state.mode === "topic") {
-    hints.push("n 下页", "【/】楼层", "数字跳楼");
-  } else if (state.currentChat) {
+  if (state.currentChat) {
     hints.push("n 更多");
   }
   hints.push("r 刷新", "o 操作", "? 帮助", "q 退出");
@@ -387,7 +407,9 @@ function drawHelpModal(baseLines: string[], width: number, height: number): stri
     "",
     " 操作",
     "   r           刷新当前视图",
-    "   n, Space    加载更多",
+    "   n           加载更多",
+    "   Space       帖子内看图",
+    "   ←/→         预览切图",
     "   o           打开操作菜单",
     "   ?           显示/关闭帮助",
     "   q           退出程序",
@@ -397,6 +419,49 @@ function drawHelpModal(baseLines: string[], width: number, height: number): stri
   const area = center(rect(width, height), 50, Math.min(20, helpContent.length + 2));
   canvas.overlay(area, helpContent, { fill: theme.color.panelBg });
   return canvas.toString();
+}
+
+function drawImageModal(baseLines: string[], state: TuiState, width: number, height: number): TerminalFrame {
+  const viewer = state.imageViewer;
+  if (!viewer) {
+    return { text: baseLines.join("\n") };
+  }
+
+  const canvas = new Canvas(width, height);
+  canvas.drawLines(rect(width, height), baseLines);
+
+  const modalWidth = Math.max(24, Math.min(width - 4, Math.floor(width * 0.92)));
+  const modalHeight = Math.max(10, Math.min(height - 2, Math.floor(height * 0.9)));
+  const area = center(rect(width, height), modalWidth, modalHeight);
+  const imageArea = pad(area, 1);
+
+  const rows = Array.from({ length: imageArea.height }, (_, index) => {
+    if (viewer.loading && index === Math.floor(imageArea.height / 2)) {
+      return fit(textStyle.muted(" 正在加载大图..."), imageArea.width);
+    }
+    if (viewer.error && index === Math.floor(imageArea.height / 2)) {
+      return fit(textStyle.danger(" 图片加载失败"), imageArea.width);
+    }
+    return " ".repeat(imageArea.width);
+  });
+
+  canvas.overlay(area, rows, { fill: theme.color.panelBg });
+
+  const overlayColumns = Math.min(imageArea.width, Math.max(1, viewer.renderSize?.columns ?? imageArea.width));
+  const overlayRows = Math.min(imageArea.height, Math.max(1, viewer.renderSize?.rows ?? imageArea.height));
+  const overlayColumnOffset = Math.max(0, Math.floor((imageArea.width - overlayColumns) / 2));
+  const overlayRowOffset = Math.max(0, Math.floor((imageArea.height - overlayRows) / 2));
+
+  return {
+    text: canvas.toString(),
+    imageOverlays: viewer.token && imageArea.width > 0 && imageArea.height > 0
+      ? [{
+        row: imageArea.y + overlayRowOffset + 1,
+        column: imageArea.x + overlayColumnOffset + 1,
+        token: viewer.token
+      }]
+      : []
+  };
 }
 
 function drawMenuModal(baseLines: string[], state: TuiState, width: number, height: number): string {
@@ -560,9 +625,10 @@ function drawTopicRight(topic: TopicReaderState, scroll: number, width: number, 
 
   rows.push(ruleLine(width));
   rows.push(fit(textStyle.muted(" j/k 行滚动  【/】楼层切换"), width));
-  rows.push(fit(textStyle.muted(" 数字+Enter 跳楼  n 下一页"), width));
-  if (topic.floorInput) {
-    rows.push(fit(textStyle.ok(` 跳转：${topic.floorInput} 楼`), width));
+  rows.push(fit(textStyle.muted(" Space 看图  → 下一张  n 下一页"), width));
+  rows.push(fit(textStyle.muted(" :+数字+Enter 跳楼"), width));
+  if (topic.floorInput && topic.floorInput !== ":") {
+    rows.push(fit(textStyle.ok(` 跳转：${topic.floorInput.slice(1)} 楼`), width));
   }
   return rows.concat(blank(height - rows.length, width)).slice(0, height);
 }
