@@ -1,5 +1,0 @@
-[tui]
-prepend_keymap = [
-  { on = "<C-k>", run = "topic.next-reply", desc = "下一条回复" },
-  { on = "<C-i>", run = "topic.previous-reply", desc = "上一条回复" },
-]

@@ -1,6 +1,5 @@
 import type { TuiConfig } from "../config.js";
 import { TokenStore } from "../storage/token-store.js";
-import { appVersion } from "../version.js";
 import { imagePreviewRows, loadImagePreview, measureImagePreview, supportsImagePreview } from "./image-preview.js";
 import { getSidebarWidth } from "./renderer.js";
 import { theme } from "./theme.js";
@@ -9,6 +8,7 @@ import {
   getStatus,
   settingsItems,
   type ContentItem,
+  type ListSnapshot,
   type TopicLineEntry,
   type TopicPostEntry,
   type TopicReaderState,
@@ -87,42 +87,17 @@ export async function openBoard(
   signal?: AbortSignal,
   pushParent = true
 ): Promise<void> {
-  if (pushParent) {
-    state.parentList = {
-      title: state.viewTitle,
-      items: state.items,
-      stats: state.stats,
-      itemIndex: state.itemIndex,
-      status: state.status
-    };
-  }
-
-  state.mode = "list";
-  state.focus = "content";
-  state.loading = true;
-  state.error = undefined;
-  state.itemIndex = 0;
-  state.scroll = 0;
-  state.topic = undefined;
-  state.currentChat = undefined;
-  state.currentBoard = { boardId, title: boardTitle };
-  state.viewTitle = boardTitle;
-  state.items = [];
-  state.stats = [
-    { title: "版面", detail: `#${boardId}` },
-    { title: "缓存", detail: "topics 30s" }
-  ];
-  state.status = "正在读取版面帖子...";
+  prepareListView(state, {
+    title: boardTitle,
+    status: "正在读取版面帖子...",
+    currentBoard: { boardId, title: boardTitle },
+    pushParent
+  });
   render();
 
   try {
     const topics = asArray(await client.getBoardTopics(boardId, 0, 12, false, force, signal));
     state.items = topics.map((topic) => topicItem(topic));
-    state.stats = [
-      { title: "版面", detail: `#${boardId}` },
-      { title: "主题", detail: `${topics.length} 条` },
-      { title: "缓存", detail: "topics 30s" }
-    ];
     state.status = "版面帖子：j/k 选择  l 打开帖子  h 返回  r 刷新";
   } catch (error) {
     if (isAbortError(error)) {
@@ -145,46 +120,25 @@ export async function openChat(
   signal?: AbortSignal,
   pushParent = true
 ): Promise<void> {
-  if (pushParent) {
-    state.parentList = {
-      title: state.viewTitle,
-      items: state.items,
-      stats: state.stats,
-      itemIndex: state.itemIndex,
-      status: state.status
-    };
+  prepareListView(state, {
+    title,
+    status: "正在读取私信...",
+    currentChat: { userId, title, loaded: 0, size: 10, hasMore: true },
+    pushParent
+  });
+  const chat = state.currentChat;
+  if (!chat) {
+    return;
   }
-
-  state.mode = "list";
-  state.focus = "content";
-  state.loading = true;
-  state.error = undefined;
-  state.itemIndex = 0;
-  state.scroll = 0;
-  state.topic = undefined;
-  state.currentBoard = undefined;
-  state.currentChat = { userId, title, loaded: 0, size: 10, hasMore: true };
-  state.viewTitle = title;
-  state.items = [];
-  state.stats = [
-    { title: "用户", detail: `#${userId}` },
-    { title: "缓存", detail: "history 15s" }
-  ];
-  state.status = "正在读取私信...";
   render();
 
   try {
     const messages = asArray(await client.getChatHistory(userId, 0, 10, force, signal));
     state.items = chatMessageItems(messages, title, userId);
-    state.currentChat.loaded = messages.length;
-    state.currentChat.hasMore = messages.length === state.currentChat.size;
+    chat.loaded = messages.length;
+    chat.hasMore = messages.length === chat.size;
     state.itemIndex = Math.max(0, state.items.length - 1);
-    state.stats = [
-      { title: "用户", detail: `#${userId}` },
-      { title: "消息", detail: `${messages.length} 条` },
-      { title: "缓存", detail: "history 15s" }
-    ];
-    state.status = state.currentChat.hasMore
+    state.status = chat.hasMore
       ? "私信：j/k 滚动  n/Space 更早消息  Esc/Backspace 返回联系人  h 返回左栏"
       : "私信：j/k 滚动  Esc/Backspace 返回联系人  h 返回左栏";
   } catch (error) {
@@ -222,11 +176,6 @@ export async function loadNextChatPage(
     state.scroll += olderItems.length;
     chat.loaded += messages.length;
     chat.hasMore = messages.length === chat.size;
-    state.stats = [
-      { title: "用户", detail: `#${chat.userId}` },
-      { title: "消息", detail: `${chat.loaded} 条` },
-      { title: "缓存", detail: "history 15s" }
-    ];
     state.status = chat.hasMore
       ? "私信：j/k 滚动  n/Space 更早消息  Esc/Backspace 返回联系人  h 返回左栏"
       : "已到最早私信；j/k 滚动  Esc/Backspace 返回联系人  h 返回左栏";
@@ -246,21 +195,8 @@ export function restoreParentList(state: TuiState): void {
   if (!state.parentList) {
     return;
   }
-  const parent = state.parentList;
-  state.mode = "list";
-  state.focus = "content";
-  state.loading = false;
-  state.loadingMore = false;
-  state.error = undefined;
-  state.topic = undefined;
-  state.currentBoard = undefined;
-  state.currentChat = undefined;
+  applyListSnapshot(state, state.parentList);
   state.parentList = undefined;
-  state.viewTitle = parent.title;
-  state.items = parent.items;
-  state.stats = parent.stats;
-  state.itemIndex = parent.itemIndex;
-  state.status = parent.status;
 }
 
 export async function loadNextTopicPage(
@@ -281,7 +217,7 @@ export async function loadNextTopicPage(
 
   try {
     const posts = asArray(await client.getTopicPosts(state.topic.topicId, state.topic.loaded, state.topic.size, false, signal));
-    const next = renderPosts(posts, Math.max(36, currentTopicWidthEstimate(config, state.sidebarWidth)), config, state.topic.lines.length);
+    const next = renderPosts(posts, Math.max(36, currentTopicWidthEstimate(state.sidebarWidth)), config, state.topic.lines.length);
     state.topic.lines.push(...next.lines);
     state.topic.posts.push(...next.posts);
     state.topic.imageCount += next.imageCount;
@@ -334,7 +270,7 @@ export async function jumpToTopicFloor(
 
   try {
     const posts = asArray(await client.getTopicPosts(topic.topicId, from, topic.size, false, signal));
-    const next = renderPosts(posts, Math.max(36, currentTopicWidthEstimate(config, state.sidebarWidth)), config, topic.lines.length);
+    const next = renderPosts(posts, Math.max(36, currentTopicWidthEstimate(state.sidebarWidth)), config, topic.lines.length);
     topic.lines.push(...next.lines);
     topic.posts.push(...next.posts);
     topic.posts.sort((left, right) => (left.floor ?? 0) - (right.floor ?? 0));
@@ -418,7 +354,6 @@ export async function loadView(
 ): Promise<{
   title: string;
   items: ContentItem[];
-  stats: ContentItem[];
   overview?: ContentItem[];
   status?: string;
 }> {
@@ -434,7 +369,6 @@ export async function loadView(
       return {
         title: "十大",
         items: hotTopics.map((topic) => topicItem(topic)),
-        stats: unreadStats(unreadObject),
         overview: overviewStats(indexObject, unreadObject)
       };
     }
@@ -442,17 +376,15 @@ export async function loadView(
       const topics = asArray(await client.getNewTopics(0, 12, force, signal));
       return {
         title: "最新",
-        items: topics.map((topic) => topicItem(topic)),
-        stats: [{ title: "新帖流", detail: `${topics.length} 条` }]
+        items: topics.map((topic) => topicItem(topic))
       };
     }
     case "boards": {
       const sections = asArray(await client.getAllBoards(force, signal));
-      const boards = flattenBoards(sections).slice(0, 14);
+      const allBoards = flattenBoards(sections);
       return {
         title: "版面",
-        items: boards,
-        stats: [{ title: "分区", detail: `${sections.length}` }, { title: "版面", detail: `${flattenBoards(sections).length}` }],
+        items: allBoards.slice(0, 14),
         status: "版面：j/k 选择  l 进入版面  h 返回  r 刷新"
       };
     }
@@ -461,10 +393,6 @@ export async function loadView(
       return {
         title: "关注",
         items: topics.map((topic) => topicItem(topic)),
-        stats: [
-          { title: "关注动态", detail: `${topics.length} 条` },
-          { title: "缓存", detail: "30s" }
-        ],
         status: "关注：j/k 选择  l 打开帖子  h 返回  r 刷新"
       };
     }
@@ -485,11 +413,6 @@ export async function loadView(
       return {
         title: "收藏",
         items,
-        stats: [
-          { title: "收藏版面", detail: `${customBoards.length} 个` },
-          { title: "主题", detail: `${items.length} 条` },
-          { title: "缓存", detail: "boards 24h / topics 30s" }
-        ],
         status: "收藏：j/k 选择  l 打开帖子  h 返回  r 刷新"
       };
     }
@@ -499,9 +422,10 @@ export async function loadView(
         client.getRecentChats(0, 10, force, signal)
       ]);
       const unreadObject = asObject(unread);
+      const unreadEntries = unreadStats(unreadObject);
       const chats = asArray(recent);
       const userNames = await loadChatUserNames(client, chats, force, signal);
-      const unreadItems = unreadStats(unreadObject)
+      const unreadItems = unreadEntries
         .filter((entry) => entry.detail !== "0" && entry.detail !== "-")
         .map((entry) => ({
           title: `未读 ${entry.title}`,
@@ -513,7 +437,6 @@ export async function loadView(
       return {
         title: "消息",
         items: [...unreadItems, ...chatItems],
-        stats: unreadStats(unreadObject),
         status: "消息：j/k 选择  l 打开会话  h 返回  r 刷新"
       };
     }
@@ -534,36 +457,79 @@ export async function loadView(
           item("关注", meObject.followCount),
           item("粉丝", meObject.fanCount),
           item("缓存文件", cacheStats.fileCacheEntries)
-        ],
-        stats: [
-          { title: "登录状态", detail: "已登录" }
         ]
       };
     }
     case "settings": {
-      const cacheStats = await client.getCacheStats();
       return {
         title: "设置",
         items: settingsItems,
-        stats: [
-          { title: "缓存", detail: `${cacheStats.fileCacheEntries} 文件` },
-          { title: "版本", detail: `v${appVersion}` }
-        ],
         status: "设置：j/k 选择  l 执行  h 返回"
       };
     }
   }
 }
 
-function currentTopicWidthEstimate(config: TuiConfig, sidebarWidthOverride?: number): number {
+function currentTopicWidthEstimate(sidebarWidthOverride?: number): number {
   const width = process.stdout.columns || Number(process.env.COLUMNS) || 80;
   const sidebarWidth = getSidebarWidth(width, sidebarWidthOverride);
   const sidebarRuleWidth = sidebarWidth > 0 ? 1 : 0;
-  if (width < 78 || config.hideRightPanel) {
-    return Math.max(24, width - sidebarWidth - sidebarRuleWidth);
+  return Math.max(24, width - sidebarWidth - sidebarRuleWidth);
+}
+
+function snapshotCurrentList(state: TuiState): ListSnapshot {
+  return {
+    title: state.viewTitle,
+    items: state.items,
+    itemIndex: state.itemIndex,
+    status: state.status
+  };
+}
+
+function prepareListView(
+  state: TuiState,
+  options: {
+    title: string;
+    status: string;
+    currentBoard?: TuiState["currentBoard"];
+    currentChat?: TuiState["currentChat"];
+    pushParent: boolean;
   }
-  const rightWidth = Math.floor(width * 0.30);
-  return Math.max(24, width - sidebarWidth - sidebarRuleWidth - 1 - rightWidth);
+): void {
+  if (options.pushParent) {
+    state.parentList = snapshotCurrentList(state);
+  }
+
+  state.mode = "list";
+  state.focus = "content";
+  state.loading = true;
+  state.loadingMore = false;
+  state.error = undefined;
+  state.itemIndex = 0;
+  state.scroll = 0;
+  state.topic = undefined;
+  state.imageViewer = undefined;
+  state.currentBoard = options.currentBoard;
+  state.currentChat = options.currentChat;
+  state.viewTitle = options.title;
+  state.items = [];
+  state.status = options.status;
+}
+
+function applyListSnapshot(state: TuiState, snapshot: ListSnapshot): void {
+  state.mode = "list";
+  state.focus = "content";
+  state.loading = false;
+  state.loadingMore = false;
+  state.error = undefined;
+  state.topic = undefined;
+  state.imageViewer = undefined;
+  state.currentBoard = undefined;
+  state.currentChat = undefined;
+  state.viewTitle = snapshot.title;
+  state.items = snapshot.items;
+  state.itemIndex = snapshot.itemIndex;
+  state.status = snapshot.status;
 }
 
 async function loadTopicImagePreviews(
@@ -577,7 +543,7 @@ async function loadTopicImagePreviews(
     return;
   }
 
-  const width = Math.max(12, currentTopicWidthEstimate(config, sidebarWidthOverride) - 4);
+  const width = Math.max(12, currentTopicWidthEstimate(sidebarWidthOverride) - 4);
   const maxRows = imagePreviewRows;
   const imageLines = topic.posts
     .flatMap((post) => post.lines)
@@ -636,7 +602,7 @@ function buildTopicReader(
     topic.replyCount !== undefined ? `${topic.replyCount} 回复` : undefined,
     topic.hitCount !== undefined ? `${topic.hitCount} 浏览` : undefined
   ].filter(Boolean).join(" · ");
-  const rendered = renderPosts(posts, currentTopicWidthEstimate(config), config);
+  const rendered = renderPosts(posts, currentTopicWidthEstimate(), config);
 
   return {
     topicId,

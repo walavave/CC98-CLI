@@ -6,19 +6,14 @@ import {
 import type { TuiConfig } from "../config.js";
 import { Canvas } from "./canvas.js";
 import { imagePreviewRows } from "./image-preview.js";
-import { center, fill, length, min, pad, percentage, rect, split } from "./layout.js";
+import { center, fill, length, pad, rect, split } from "./layout.js";
 import type { TerminalFrame, TerminalImageOverlay } from "./terminal.js";
-import { blank, cellWidth, fit, truncate, wrapText } from "./text.js";
+import { blank, cellWidth, fit, truncate } from "./text.js";
 import { ruleLine, selectedLine, textStyle, theme } from "./theme.js";
 import {
   currentTopicLine,
-  currentTopicPost,
   getStatus,
-  lineKindLabel,
-  mascotMini,
   navItems,
-  type MenuItem,
-  type TopicReaderState,
   type TuiState
 } from "./tui-model.js";
 
@@ -75,63 +70,38 @@ export function draw(state: TuiState, size: { columns: number; rows: number }, c
   }
 
   const sidebarWidth = getSidebarWidth(width, state.sidebarWidth);
-  const showRight = width >= 78 && !config.hideRightPanel;
-  const bodyColumns = showRight
-    ? split(bodyArea, "horizontal", [
-      length(sidebarWidth),
-      length(sidebarWidth > 0 ? 1 : 0),
-      min(24),
-      length(1),
-      percentage(30)
-    ])
-    : split(bodyArea, "horizontal", [
-      length(sidebarWidth),
-      length(sidebarWidth > 0 ? 1 : 0),
-      fill()
-    ]);
+  const bodyColumns = split(bodyArea, "horizontal", [
+    length(sidebarWidth),
+    length(sidebarWidth > 0 ? 1 : 0),
+    fill()
+  ]);
 
   const [sidebarArea, sidebarRuleArea, mainArea] = bodyColumns;
-  const rightRuleArea = showRight ? bodyColumns[3] : undefined;
-  const rightArea = showRight ? bodyColumns[4] : undefined;
 
   let imageOverlays: TerminalImageOverlay[] = [];
 
   if (sidebarArea.width > 0) {
     canvas.drawLines(sidebarArea, drawSidebar(state, sidebarArea.width, sidebarArea.height));
   }
-  const main = drawMain(state, mainArea.width, mainArea.height, config);
+  const main = drawMain(state, mainArea.width, mainArea.height);
   canvas.drawLines(mainArea, main.rows);
   imageOverlays = main.imageOverlays.map((overlay) => ({
     row: mainArea.y + overlay.row + 1,
     column: mainArea.x + 2,
     token: overlay.token
   }));
-  if (rightArea && rightRuleArea && rightArea.width > 0 && rightRuleArea.width > 0) {
-    canvas.drawLines(rightArea, drawRight(state, rightArea.width, rightArea.height));
-  }
-
   if (sidebarRuleArea.width > 0) {
     canvas.verticalRule(sidebarRuleArea);
     canvas.junction(sidebarRuleArea.x, bodyArea.y - 1, theme.border.teeTop);
   }
-  if (rightArea && rightRuleArea && rightArea.width > 0 && rightRuleArea.width > 0) {
-    canvas.verticalRule(rightRuleArea);
-    canvas.junction(rightRuleArea.x, bodyArea.y - 1, theme.border.teeTop);
-  }
   if (sidebarRuleArea.width > 0) {
     canvas.junction(sidebarRuleArea.x, outer.y + outer.height - 1, theme.border.teeBottom);
-  }
-  if (rightArea && rightRuleArea && rightArea.width > 0 && rightRuleArea.width > 0) {
-    canvas.junction(rightRuleArea.x, outer.y + outer.height - 1, theme.border.teeBottom);
   }
   canvas.drawLines(statusArea, [drawStatusBar(state, statusArea.width)]);
 
   const baseLines = canvas.toLines();
   if (state.modal === "help") {
     return { text: drawHelpModal(baseLines, width, height) };
-  }
-  if (state.modal === "menu") {
-    return { text: drawMenuModal(baseLines, state, width, height) };
   }
   if (state.modal === "account") {
     return { text: drawAccountModal(baseLines, state.accountModal, width, height) };
@@ -178,9 +148,9 @@ function drawSidebar(state: TuiState, width: number, height: number): string[] {
     const hint = width > 16 ? ` ${nav.hint}` : "";
     const text = fit(`${label}${hint}`, width);
     if (active && focused) {
-      rows.push(sidebarSelectedLine(text, width, true));
+      rows.push(selectedLine(text, width, true));
     } else if (active) {
-      rows.push(sidebarSelectedLine(text, width, false));
+      rows.push(selectedLine(text, width, true));
     } else {
       rows.push(`${textStyle.primary(label)}${textStyle.muted(fit(hint, Math.max(0, width - cellWidth(label))))}`);
     }
@@ -188,11 +158,7 @@ function drawSidebar(state: TuiState, width: number, height: number): string[] {
   return rows;
 }
 
-function sidebarSelectedLine(content: string, width: number, focused: boolean): string {
-  return selectedLine(content, width, true);
-}
-
-function drawMain(state: TuiState, width: number, height: number, config: TuiConfig): TopicDrawResult {
+function drawMain(state: TuiState, width: number, height: number): TopicDrawResult {
   if (state.mode === "topic") {
     return drawTopic(state, width, height);
   }
@@ -230,7 +196,7 @@ function drawMain(state: TuiState, width: number, height: number, config: TuiCon
     const index = scroll + offset;
     const active = index === state.itemIndex && (state.focus === "content" || state.mode === "settings");
     const marker = active ? theme.marker.selected : theme.marker.normal;
-    const title = fit(` ${marker} ${listItemTitle(itemValue, config)}`, width);
+    const title = fit(` ${marker} ${listItemTitle(itemValue)}`, width);
     rows.push(active ? selectedLine(title, width, state.focus === "content" || state.mode === "settings") : textStyle.muted(title));
 
     rows.push(itemValue.meta ? fit(textStyle.muted(`  ${itemValue.meta}`), width) : " ".repeat(width));
@@ -247,8 +213,8 @@ function drawMain(state: TuiState, width: number, height: number, config: TuiCon
   return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
 }
 
-function listItemTitle(itemValue: { title: string; detail?: string }, config: TuiConfig): string {
-  if (!config.hideRightPanel || !itemValue.detail) {
+function listItemTitle(itemValue: { title: string; detail?: string }): string {
+  if (!itemValue.detail) {
     return itemValue.title;
   }
   if ("topicId" in itemValue && itemValue.topicId !== undefined) {
@@ -389,7 +355,7 @@ function getKeyHints(state: TuiState): string {
   if (state.currentChat) {
     hints.push("n 更多");
   }
-  hints.push("r 刷新", "o 操作", "? 帮助", "q 退出");
+  hints.push("r 刷新", "? 帮助", "q 退出");
   return hints.join(" ");
 }
 
@@ -410,7 +376,6 @@ function drawHelpModal(baseLines: string[], width: number, height: number): stri
     "   n           加载更多",
     "   Space       帖子内看图",
     "   ←/→         预览切图",
-    "   o           打开操作菜单",
     "   ?           显示/关闭帮助",
     "   q           退出程序",
     "",
@@ -462,173 +427,4 @@ function drawImageModal(baseLines: string[], state: TuiState, width: number, hei
       }]
       : []
   };
-}
-
-function drawMenuModal(baseLines: string[], state: TuiState, width: number, height: number): string {
-  const canvas = new Canvas(width, height);
-  canvas.drawLines(rect(width, height), baseLines);
-  const rows = [
-    textStyle.primaryBold(" 操作菜单"),
-    ...state.menuItems.map((item: MenuItem, index) => {
-      const active = index === state.menuIndex;
-      const label = ` ${item.label}`;
-      const key = `[${item.key}]`;
-      const padding = Math.max(0, 28 - cellWidth(label) - cellWidth(key));
-      const content = `${label}${" ".repeat(padding)}${key}`;
-      return active ? selectedLine(content, 28, true) : content;
-    })
-  ];
-  const area = center(rect(width, height), 32, rows.length + 2);
-  canvas.overlay(area, rows, { fill: theme.color.panelBg });
-  return canvas.toString();
-}
-
-function drawRight(state: TuiState, width: number, height: number): string[] {
-  if (state.mode === "topic" && state.topic) {
-    return drawTopicRight(state.topic, state.scroll, width, height);
-  }
-  if (state.focus === "nav") {
-    return drawNavRight(state, width, height);
-  }
-  return drawItemRight(state, width, height);
-}
-
-function drawNavRight(state: TuiState, width: number, height: number): string[] {
-  const rows: string[] = [];
-  const nav = navItems[state.navIndex];
-  rows.push(...mascotMini.map((row) => fit(textStyle.onPrimary(row), width)));
-  rows.push(ruleLine(width));
-  rows.push(fit(textStyle.primaryBold(` ${nav.label}`), width));
-  rows.push(fit(textStyle.muted(` ${nav.hint}`), width));
-  rows.push(ruleLine(width));
-
-  if (state.loading) {
-    rows.push(fit(textStyle.muted(" 正在读取栏目..."), width));
-  } else if (state.error) {
-    rows.push(fit(textStyle.danger(" 栏目读取失败"), width));
-    rows.push(fit(` ${state.error}`, width));
-  } else {
-    rows.push(fit(textStyle.muted(" 当前内容"), width));
-    rows.push(fit(textStyle.primarySoft(` ${state.items.length} 项`), width));
-    if (state.stats.length > 0) {
-      rows.push(ruleLine(width));
-      state.stats.slice(0, 5).forEach((stat) => {
-        rows.push(fit(textStyle.muted(` ${stat.title}`), width));
-        rows.push(fit(textStyle.primarySoft(` ${stat.detail ?? "-"}`), width));
-      });
-    }
-  }
-
-  rows.push(ruleLine(width));
-  rows.push(fit(textStyle.muted(" j/k 切换栏目"), width));
-  rows.push(fit(textStyle.muted(" l/Enter 进入内容"), width));
-  rows.push(fit(textStyle.muted(" r 刷新当前栏目"), width));
-  return rows.concat(blank(height - rows.length, width)).slice(0, height);
-}
-
-function drawItemRight(state: TuiState, width: number, height: number): string[] {
-  const rows: string[] = [];
-  const selected = state.items[state.itemIndex];
-
-  if (!selected) {
-    rows.push(fit(textStyle.muted(" 暂无选中项"), width));
-    return rows.concat(blank(height - rows.length, width)).slice(0, height);
-  }
-
-  rows.push(fit(textStyle.primaryBold(` ${selected.title}`), width));
-  if (selected.meta) {
-    wrapText(selected.meta, width - 2).slice(0, 3).forEach((row) => {
-      rows.push(fit(textStyle.muted(` ${row}`), width));
-    });
-  }
-  rows.push(ruleLine(width));
-
-  if (selected.detail) {
-    wrapText(selected.detail, width - 2).filter((row) => row.trim() !== "").slice(0, Math.max(0, height - rows.length - 8)).forEach((row) => {
-      rows.push(fit(` ${row}`, width));
-    });
-  } else {
-    rows.push(fit(textStyle.muted(" 没有摘要内容"), width));
-  }
-
-  rows.push(ruleLine(width));
-  if (selected.topicId !== undefined) {
-    rows.push(fit(textStyle.muted(` 主题 #${selected.topicId}`), width));
-    if (selected.boardId !== undefined) {
-      rows.push(fit(textStyle.muted(` 版面 #${selected.boardId}`), width));
-    }
-    rows.push(fit(textStyle.primarySoft(" l 打开阅读"), width));
-  } else if (selected.boardId !== undefined) {
-    rows.push(fit(textStyle.muted(` 版面 #${selected.boardId}`), width));
-    rows.push(fit(textStyle.primarySoft(" l 读取主题"), width));
-  } else if (selected.chatUserId !== undefined) {
-    rows.push(fit(textStyle.muted(` 用户 #${selected.chatUserId}`), width));
-    rows.push(fit(textStyle.primarySoft(" l 打开会话"), width));
-  } else if (state.mode === "settings") {
-    rows.push(fit(textStyle.primarySoft(" l/Enter 执行"), width));
-  }
-
-  return rows.concat(blank(height - rows.length, width)).slice(0, height);
-}
-
-function drawTopicRight(topic: TopicReaderState, scroll: number, width: number, height: number): string[] {
-  const rows: string[] = [];
-  const post = currentTopicPost(topic, scroll);
-  const lineEntry = currentTopicLine(topic, scroll);
-  rows.push(fit(textStyle.primaryBold(` ${topic.title}`), width));
-  if (topic.meta) {
-    wrapText(topic.meta, width - 2).slice(0, 2).forEach((row) => {
-      rows.push(fit(textStyle.muted(` ${row}`), width));
-    });
-  }
-  rows.push(ruleLine(width));
-
-  if (post) {
-    const floor = post.floor !== undefined ? `${post.floor} 楼` : "未知楼层";
-    rows.push(fit(textStyle.primarySoft(` ${floor}`), width));
-    rows.push(fit(textStyle.muted(` ${post.author}${post.time ? ` · ${post.time}` : ""}`), width));
-    rows.push(fit(textStyle.muted(` 赞 ${post.likeCount}  踩 ${post.dislikeCount}${post.rating ? `  评分 ${post.rating}` : ""}`), width));
-    rows.push(ruleLine(width));
-
-    if (lineEntry) {
-      rows.push(fit(textStyle.muted(` 当前行 ${lineEntry.row + 1}/${post.lines.length}`), width));
-      rows.push(fit(textStyle.primarySoft(` ${lineKindLabel(lineEntry.kind)}`), width));
-      if (lineEntry.imageUrl) {
-        rows.push(fit(textStyle.muted(` 图片 ${lineEntry.imageIndex}`), width));
-        wrapText(lineEntry.imageUrl, width - 2).slice(0, 2).forEach((row) => rows.push(fit(` ${row}`, width)));
-      } else if (lineEntry.linkUrl) {
-        rows.push(fit(textStyle.muted(` 链接 ${lineEntry.linkIndex}`), width));
-        wrapText(lineEntry.linkUrl, width - 2).slice(0, 2).forEach((row) => rows.push(fit(` ${row}`, width)));
-      } else if (lineEntry.text.trim()) {
-        wrapText(lineEntry.text, width - 2).slice(0, 3).forEach((row) => rows.push(fit(` ${row}`, width)));
-      }
-    }
-
-    rows.push(ruleLine(width));
-    rows.push(fit(textStyle.muted(` 本楼 图片 ${post.imageCount}  链接 ${post.linkCount}`), width));
-  }
-
-  const hot = topic.posts
-    .filter((entry) => entry.likeCount > 0)
-    .sort((left, right) => right.likeCount - left.likeCount)
-    .slice(0, 3);
-  if (hot.length > 0 && rows.length < height - 5) {
-    rows.push(ruleLine(width));
-    rows.push(fit(textStyle.primaryBold(" 热门回复"), width));
-    hot.forEach((entry) => {
-      rows.push(fit(textStyle.muted(` #${entry.floor ?? "?"} ${entry.author} · ${entry.likeCount} 赞`), width));
-      if (entry.preview) {
-        rows.push(fit(` ${truncate(entry.preview, width - 2)}`, width));
-      }
-    });
-  }
-
-  rows.push(ruleLine(width));
-  rows.push(fit(textStyle.muted(" j/k 行滚动  【/】楼层切换"), width));
-  rows.push(fit(textStyle.muted(" Space 看图  → 下一张  n 下一页"), width));
-  rows.push(fit(textStyle.muted(" :+数字+Enter 跳楼"), width));
-  if (topic.floorInput && topic.floorInput !== ":") {
-    rows.push(fit(textStyle.ok(` 跳转：${topic.floorInput.slice(1)} 楼`), width));
-  }
-  return rows.concat(blank(height - rows.length, width)).slice(0, height);
 }

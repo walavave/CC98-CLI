@@ -49,11 +49,8 @@ export async function runTui(): Promise<void> {
     status: "",
     viewTitle: "十大",
     items: [],
-    stats: [],
     overview: [],
     modal: null,
-    menuIndex: 0,
-    menuItems: [],
     accountModal: {
       accounts: [],
       selectedIndex: 0
@@ -96,7 +93,6 @@ export async function runTui(): Promise<void> {
           state.focus = "content";
         }
         state.items = [];
-        state.stats = [];
         state.topic = undefined;
         state.imageViewer = undefined;
         state.parentList = undefined;
@@ -112,7 +108,6 @@ export async function runTui(): Promise<void> {
           }
           state.viewTitle = next.title;
           state.items = next.items;
-          state.stats = next.stats;
           if (next.overview) {
             state.overview = next.overview;
           }
@@ -126,7 +121,6 @@ export async function runTui(): Promise<void> {
           }
           state.error = error instanceof Error ? error.message : String(error);
           state.items = [];
-          state.stats = [];
         } finally {
           if (!closed && version === loadVersion) {
             state.loading = false;

@@ -1,6 +1,6 @@
 # CC98-CLI
 
-CC98 的命令行客户端，包含面向脚本使用的 CLI 和适合日常浏览的 TUI。
+CC98 的命令行客户端，有适合日常浏览的 TUI，以及面向脚本使用的 CLI 。
 
 - 直接运行 `cc98`：进入终端界面。
 - 带参数运行 `cc98 <command>`：执行 CLI，默认输出 JSON。
@@ -8,14 +8,25 @@ CC98 的命令行客户端，包含面向脚本使用的 CLI 和适合日常浏�
 
 ## 概要
 
-vibe coding 累了的话，不妨在终端里水水 98。
+这是一个个人兴趣项目，改版自Lucent-Snow的[CC98-CLI](https://github.com/Lucent-Snow/CC98-CLI)，风格和TUI布局模式参考[Yazi](https://github.com/sxyazi/yazi)。
 
-这是一个个人兴趣项目，基于 CC98 的公开接口实现，与 CC98 官方无关。请合理使用本工具，避免违反 CC98 的用户协议。
+基于 CC98 的公开接口实现，与 CC98 官方无关。请合理使用本工具，避免违反 CC98 的用户协议。
+
+### 特色
+
+- **支持WebVPN、RVPN**：RVPN使用`atrust`验证；魔法VPN不开启TUN模式下也可以使用
+- **支持鼠标点击/滚动**：支持鼠标左右拉动分割线
+- **支持文件下载**：鼠标点击链接下载文件，支持`.pdf` `.docs`等
+- **图片预览（快捷键预览大图）**：支持`Kitty（KPG）`和`iterm2`渲染，在基于libghostty的终端上完成验证
+- **图形化登录**：无需使用命令行登录、切换账号
+- **Yazi风格**：伪装Yazi文件管理器；q键退出，终端不留痕
+- **自定义**：主题颜色、部分快捷键
 
 ## 预览
 
 <p align="center">
-  <img src="docs/images/tui.jpg" alt="CC98-CLI TUI 截图" width="900">
+  <img src="docs/images/tui.png" alt="CC98-CLI TUI 截图" width="900">
+  <img src="docs/images/tui2.png" alt="CC98-CLI TUI 截图2" width="900">
 </p>
 
 ## 安装
@@ -23,7 +34,13 @@ vibe coding 累了的话，不妨在终端里水水 98。
 需要 Node.js 20+。
 
 ```bash
-npm install -g cc98-cli
+npm install -g @walavave/cc98-cli
+```
+
+安装后命令是：
+
+```bash
+cc98
 ```
 
 ## 登录
@@ -54,7 +71,6 @@ l 或 →            进入下一层
 h 或 ←            返回上一层
 Enter             确认执行
 r                 刷新
-o                 打开操作菜单
 ?                 显示帮助
 n 或 Space        加载更多
 q                 退出
@@ -69,7 +85,6 @@ q                 退出
 ```toml
 [tui]
 hide_top_chrome = false
-hide_right_panel = false
 preview_images = true
 ```
 
@@ -128,8 +143,7 @@ node dist/main.js
 
 ## 致谢
 
-- [Ansherly](https://github.com/Ansherly)：感谢前辈的积极鼓励！
-- [CC98-Desktop](https://github.com/Ansherly/CC98-Desktop)：部分 TUI 信息架构参考了该桌面客户端的交互设计。
+- [CC98-CLI](https://github.com/Lucent-Snow/CC98-CLI)：基于该项目fork，因技术路线分离而独立
 
 ## License
 

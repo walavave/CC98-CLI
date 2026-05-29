@@ -82,7 +82,7 @@ export function formatUpdateResult(result: UpdateCheckResult): string {
     lines.push(`最新版本：${result.latest.tagName}`);
     lines.push(`发布页面：${result.latest.url}`);
     if (result.updateAvailable) {
-      lines.push("更新方式：npm install -g cc98-cli");
+      lines.push("更新方式：npm install -g @walavave/cc98-cli");
     }
     const body = result.latest.body.trim();
     if (body) {

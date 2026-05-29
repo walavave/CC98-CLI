@@ -8,14 +8,12 @@ export interface AppConfig {
 
 export interface TuiConfig {
   hideTopChrome: boolean;
-  hideRightPanel: boolean;
   previewImages: boolean;
 }
 
 const defaultConfig: AppConfig = {
   tui: {
     hideTopChrome: false,
-    hideRightPanel: false,
     previewImages: true
   }
 };
@@ -43,7 +41,6 @@ function mergeConfig(base: AppConfig, parsed: Record<string, Record<string, unkn
   return {
     tui: {
       hideTopChrome: booleanValue(tui.hide_top_chrome, base.tui.hideTopChrome),
-      hideRightPanel: booleanValue(tui.hide_right_panel, base.tui.hideRightPanel),
       previewImages: booleanValue(tui.preview_images, base.tui.previewImages)
     }
   };

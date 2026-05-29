@@ -6,7 +6,7 @@ import type {
 
 export type ViewId = "hot" | "new" | "boards" | "following" | "favorite" | "messages" | "me" | "settings";
 export type FocusColumn = "nav" | "content";
-export type ModalType = "menu" | "help" | "account" | "login" | "confirm" | "image" | null;
+export type ModalType = "help" | "account" | "login" | "confirm" | "image" | null;
 
 export interface NavItem {
   id: ViewId;
@@ -43,15 +43,12 @@ export interface TuiState {
   account?: string;
   viewTitle: string;
   items: ContentItem[];
-  stats: ContentItem[];
   overview: ContentItem[];
   parentList?: ListSnapshot;
   currentBoard?: BoardListState;
   currentChat?: ChatListState;
   topic?: TopicReaderState;
   modal: ModalType;
-  menuIndex: number;
-  menuItems: MenuItem[];
   accountModal: AccountModalState;
   loginForm: LoginFormState;
   confirmDialog?: ConfirmDialogState;
@@ -61,7 +58,6 @@ export interface TuiState {
 export interface ListSnapshot {
   title: string;
   items: ContentItem[];
-  stats: ContentItem[];
   itemIndex: number;
   status: string;
 }
@@ -138,21 +134,6 @@ export interface TopicLineEntry {
   linkUrl?: string;
 }
 
-export interface MenuItem {
-  label: string;
-  key: string;
-  action: string;
-}
-
-export const mascotMini = [
-  "  ▄▄▄ ▄▄▄ ▄███",
-  " ██▀█████▀█▄ ██",
-  "█▀  ▀   ▀ ██ ██",
-  "█  ██▄█  █▄▄ ██",
-  "██ ▀    ████▄██",
-  " ▀██▄▄██████▀"
-];
-
 export const navItems: NavItem[] = [
   { id: "hot", label: "十大", hint: "热门话题" },
   { id: "favorite", label: "收藏", hint: "版面帖子" },
@@ -186,25 +167,6 @@ export function currentTopicLine(topic: TopicReaderState, scroll: number): Topic
   return post.lines.find((entry) => entry.line === scroll) ??
     post.lines.find((entry) => entry.line > scroll && entry.kind !== "blank") ??
     post.lines.at(-1);
-}
-
-export function lineKindLabel(kind: TopicLineEntry["kind"]): string {
-  switch (kind) {
-    case "header":
-      return "楼层标题";
-    case "divider":
-      return "分隔线";
-    case "quote":
-      return "引用";
-    case "image":
-      return "图片";
-    case "link":
-      return "链接";
-    case "blank":
-      return "空行";
-    case "text":
-      return "正文";
-  }
 }
 
 export function getStatus(state: TuiState): string {

@@ -15,8 +15,7 @@ import {
   restoreParentList
 } from "./app-data.js";
 import { loadModalImagePreview, supportsImagePreview } from "./image-preview.js";
-import { getMenuItems } from "./interactions.js";
-import { fill, length, min, pad, percentage, rect, split } from "./layout.js";
+import { fill, length, pad, rect, split } from "./layout.js";
 import { getSidebarWidth } from "./renderer.js";
 import { downloadUrlToDownloads } from "./downloads.js";
 import { currentTopicLine, currentTopicPost, getStatus, navItems, settingsItems, type TuiState } from "./tui-model.js";
@@ -126,11 +125,6 @@ export function createKeyHandler(context: RuntimeContext): (key: string) => void
       return;
     }
 
-    if (state.modal === "menu") {
-      handleMenuModal(context, key);
-      return;
-    }
-
     if (state.modal === "account") {
       handleAccountModal(context, key);
       return;
@@ -168,42 +162,6 @@ export function createKeyHandler(context: RuntimeContext): (key: string) => void
 
     handleContentFocus(context, key);
   };
-}
-
-function handleMenuModal(context: RuntimeContext, key: string): void {
-  const { state, render, load, abortCurrent } = context;
-  if (key === "j" || key === "\x1b[B") {
-    state.menuIndex = Math.min(state.menuItems.length - 1, state.menuIndex + 1);
-    render();
-    return;
-  }
-  if (key === "k" || key === "\x1b[A") {
-    state.menuIndex = Math.max(0, state.menuIndex - 1);
-    render();
-    return;
-  }
-  if (key === "\r" || key === "l" || key === "\x1b[C") {
-    const selected = state.menuItems[state.menuIndex];
-    state.modal = null;
-    if (selected?.action === "refresh") {
-      void load(true);
-    } else if (selected?.action === "back") {
-      if (state.mode === "topic") {
-        abortCurrent();
-        leaveTopicMode(state);
-        render();
-      } else if (state.parentList) {
-        abortCurrent();
-        restoreParentList(state);
-        render();
-      }
-    }
-    return;
-  }
-  if (key === "h" || key === "\x1b[D" || key === "\x1b" || key === "o") {
-    state.modal = null;
-    render();
-  }
 }
 
 function showNotification(state: TuiState, message: string, durationMs = 3200): void {
@@ -515,12 +473,6 @@ function handleTopicMode(context: RuntimeContext, key: string, keyAction: string
     }
     return;
   }
-  if (key === "o") {
-    state.modal = "menu";
-    state.menuItems = getMenuItems(state);
-    state.menuIndex = 0;
-    render();
-  }
 }
 
 function handleImageModal(context: RuntimeContext, key: string): void {
@@ -642,6 +594,45 @@ function leaveTopicMode(state: TuiState): void {
   state.status = getStatus(state);
 }
 
+function enterContentMode(state: TuiState, resetIndex = false): void {
+  if (navItems[state.navIndex]?.id === "settings") {
+    state.mode = "settings";
+  }
+  state.focus = "content";
+  if (resetIndex) {
+    state.itemIndex = 0;
+  }
+  state.status = getStatus(state);
+}
+
+function leaveContentMode(state: TuiState): void {
+  if (state.parentList) {
+    restoreParentList(state);
+    return;
+  }
+  state.mode = "list";
+  state.focus = "nav";
+  state.status = getStatus(state);
+}
+
+function openSelectedItem(context: RuntimeContext): boolean {
+  const { state, render, client, config, nextSignal } = context;
+  const selected = state.items[state.itemIndex];
+  if (selected?.topicId !== undefined) {
+    void openTopic(client, state, selected.topicId, render, config, false, nextSignal());
+    return true;
+  }
+  if (selected?.boardId !== undefined) {
+    void openBoard(client, state, selected.boardId, selected.title, render, false, nextSignal());
+    return true;
+  }
+  if (selected?.chatUserId !== undefined) {
+    void openChat(client, state, selected.chatUserId, selected.title, render, false, nextSignal());
+    return true;
+  }
+  return false;
+}
+
 async function handleTopicClick(
   context: RuntimeContext,
   event: MouseEvent,
@@ -740,14 +731,17 @@ function handleContentClick(
     return false;
   }
 
+  if (navItems[state.navIndex]?.id === "settings" && state.mode !== "settings") {
+    state.mode = "settings";
+  }
+
   if (state.mode === "settings") {
     const rowIndex = event.row - (mainArea.y + 1) - 2;
     if (rowIndex < 0 || rowIndex >= settingsItems.length) {
       return true;
     }
     state.itemIndex = rowIndex;
-    state.focus = "content";
-    state.status = getStatus(state);
+    enterContentMode(state);
     render();
     return true;
   }
@@ -770,8 +764,7 @@ function handleContentClick(
   }
 
   state.itemIndex = itemIndex;
-  state.focus = "content";
-  state.status = getStatus(state);
+  enterContentMode(state);
   render();
   return true;
 }
@@ -815,20 +808,11 @@ function getBodyColumnRects(
   const areas = split(root, "vertical", verticalLayout);
   const bodyArea = config.hideTopChrome ? areas[0] : areas[4];
   const sidebarWidth = getSidebarWidth(width, sidebarWidthOverride);
-  const showRight = width >= 78 && !config.hideRightPanel;
-  const bodyColumns = showRight
-    ? split(bodyArea, "horizontal", [
-      length(sidebarWidth),
-      length(sidebarWidth > 0 ? 1 : 0),
-      min(24),
-      length(1),
-      percentage(30)
-    ])
-    : split(bodyArea, "horizontal", [
-      length(sidebarWidth),
-      length(sidebarWidth > 0 ? 1 : 0),
-      fill()
-    ]);
+  const bodyColumns = split(bodyArea, "horizontal", [
+    length(sidebarWidth),
+    length(sidebarWidth > 0 ? 1 : 0),
+    fill()
+  ]);
   return {
     sidebarArea: bodyColumns[0],
     mainArea: bodyColumns[2]
@@ -876,9 +860,7 @@ function handleSettingsMode(context: RuntimeContext, key: string): void {
     return;
   }
   if (key === "h" || key === "\x1b[D") {
-    state.mode = "list";
-    state.focus = "nav";
-    state.status = getStatus(state);
+    leaveContentMode(state);
     render();
     return;
   }
@@ -964,14 +946,7 @@ function handleNavFocus(context: RuntimeContext, key: string): void {
   }
   if (key === "l" || key === "\x1b[C" || key === "\r") {
     if (!state.loading && state.items.length > 0) {
-      if (navItems[state.navIndex]?.id === "settings") {
-        state.mode = "settings";
-      }
-      state.focus = "content";
-      if (key === "\r") {
-        state.itemIndex = 0;
-      }
-      state.status = getStatus(state);
+      enterContentMode(state, key === "\r");
       render();
     }
     return;
@@ -994,30 +969,13 @@ function handleContentFocus(context: RuntimeContext, key: string): void {
     return;
   }
   if (key === "h" || key === "\x1b[D" || key === "\x1b") {
-    if (state.parentList) {
-      abortCurrent();
-      restoreParentList(state);
-      render();
-    } else {
-      abortCurrent();
-      state.focus = "nav";
-      state.status = getStatus(state);
-      render();
-    }
+    abortCurrent();
+    leaveContentMode(state);
+    render();
     return;
   }
   if (key === "l" || key === "\x1b[C" || key === "\r") {
-    const selected = state.items[state.itemIndex];
-    if (selected?.topicId !== undefined) {
-      void openTopic(client, state, selected.topicId, render, config, false, nextSignal());
-      return;
-    }
-    if (selected?.boardId !== undefined) {
-      void openBoard(client, state, selected.boardId, selected.title, render, false, nextSignal());
-      return;
-    }
-    if (selected?.chatUserId !== undefined) {
-      void openChat(client, state, selected.chatUserId, selected.title, render, false, nextSignal());
+    if (openSelectedItem(context)) {
       return;
     }
     state.status = "当前条目不可进入";
@@ -1039,11 +997,5 @@ function handleContentFocus(context: RuntimeContext, key: string): void {
     }
     void load(true);
     return;
-  }
-  if (key === "o") {
-    state.modal = "menu";
-    state.menuItems = getMenuItems(state);
-    state.menuIndex = 0;
-    render();
   }
 }

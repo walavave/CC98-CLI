@@ -1,6 +1,6 @@
 {
-  "name": "cc98-cli",
-  "version": "0.2.0",
+  "name": "@walavave/cc98-cli",
+  "version": "0.1.0",
   "description": "A native TypeScript CLI and TUI client for CC98.",
   "type": "module",
   "bin": {
@@ -20,12 +20,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Lucent-Snow/CC98-CLI.git"
+    "url": "git+git@two.github.com:walavave/CC98-CLI.git"
   },
   "bugs": {
-    "url": "https://github.com/Lucent-Snow/CC98-CLI/issues"
+    "url": "https://github.com/walavave/CC98-CLI/issues"
   },
-  "homepage": "https://github.com/Lucent-Snow/CC98-CLI#readme",
+  "homepage": "https://github.com/walavave/CC98-CLI#readme",
   "engines": {
     "node": ">=20"
   },

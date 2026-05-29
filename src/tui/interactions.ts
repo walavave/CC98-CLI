@@ -1,19 +1,5 @@
 import { getSidebarWidth } from "./renderer.js";
-import { settingsItems, type MenuItem, type TuiState } from "./tui-model.js";
-
-export function getMenuItems(state: TuiState): MenuItem[] {
-  const items: MenuItem[] = [];
-  if (state.mode === "topic") {
-    items.push({ label: "刷新", key: "r", action: "refresh" });
-    items.push({ label: "返回列表", key: "h", action: "back" });
-  } else if (state.mode === "list") {
-    items.push({ label: "刷新", key: "r", action: "refresh" });
-    if (state.currentBoard) {
-      items.push({ label: "返回版面列表", key: "h", action: "back" });
-    }
-  }
-  return items;
-}
+import { settingsItems, type TuiState } from "./tui-model.js";
 
 export function getSidebarDividerColumn(totalWidth: number, preferred?: number): number {
   const sidebarWidth = getSidebarWidth(totalWidth, preferred);
