@@ -90,6 +90,12 @@ export function createMouseHandler(
     if (event.kind === "up") {
       state.draggingSidebarDivider = false;
       if (event.button === "left") {
+        if (handleSidebarClick(context, event, size.columns, size.rows)) {
+          return;
+        }
+        if (handleContentClick(context, event, size.columns, size.rows)) {
+          return;
+        }
         void handleTopicClick(context, event, size.columns, size.rows);
       }
     }
@@ -680,12 +686,125 @@ async function handleTopicClick(
   }
 }
 
+function handleSidebarClick(
+  context: RuntimeContext,
+  event: MouseEvent,
+  columns: number,
+  rows: number
+): boolean {
+  const { state, render, load, abortCurrent } = context;
+  if (state.mode === "topic") {
+    return false;
+  }
+
+  const sidebarArea = getSidebarAreaRect(columns, rows, context.config, state.sidebarWidth);
+  if (sidebarArea.width <= 0 || !withinRect(event.column, event.row, sidebarArea)) {
+    return false;
+  }
+
+  const rowIndex = event.row - (sidebarArea.y + 1);
+  if (rowIndex < 0 || rowIndex >= navItems.length) {
+    return true;
+  }
+
+  const nextNavIndex = Math.max(0, Math.min(navItems.length - 1, rowIndex));
+  if (state.navIndex === nextNavIndex && state.focus === "nav" && state.mode !== "settings") {
+    return true;
+  }
+
+  abortCurrent();
+  state.navIndex = nextNavIndex;
+  state.focus = "nav";
+  if (state.mode === "settings") {
+    state.mode = "list";
+  }
+  state.status = getStatus(state);
+  render();
+  void load();
+  return true;
+}
+
+function handleContentClick(
+  context: RuntimeContext,
+  event: MouseEvent,
+  columns: number,
+  rows: number
+): boolean {
+  const { state, render } = context;
+  if (state.mode === "topic" || state.loading || state.error) {
+    return false;
+  }
+
+  const mainArea = getMainAreaRect(columns, rows, context.config, state.sidebarWidth);
+  if (!withinRect(event.column, event.row, mainArea)) {
+    return false;
+  }
+
+  if (state.mode === "settings") {
+    const rowIndex = event.row - (mainArea.y + 1) - 2;
+    if (rowIndex < 0 || rowIndex >= settingsItems.length) {
+      return true;
+    }
+    state.itemIndex = rowIndex;
+    state.focus = "content";
+    state.status = getStatus(state);
+    render();
+    return true;
+  }
+
+  const rowIndex = event.row - (mainArea.y + 1) - 2;
+  if (rowIndex < 0) {
+    return true;
+  }
+
+  const itemHeight = 2;
+  if (rowIndex % itemHeight !== 0 && rowIndex % itemHeight !== 1) {
+    return true;
+  }
+  const visibleCapacity = Math.max(1, Math.floor(Math.max(1, mainArea.height - 2) / itemHeight));
+  const scroll = getContentListScroll(state, visibleCapacity);
+  const itemOffset = Math.floor(rowIndex / itemHeight);
+  const itemIndex = scroll + itemOffset;
+  if (itemIndex < 0 || itemIndex >= state.items.length) {
+    return true;
+  }
+
+  state.itemIndex = itemIndex;
+  state.focus = "content";
+  state.status = getStatus(state);
+  render();
+  return true;
+}
+
 function getMainAreaRect(
   columns: number,
   rows: number,
   config: TuiConfig,
   sidebarWidthOverride?: number
 ): { x: number; y: number; width: number; height: number } {
+  const { mainArea } = getBodyColumnRects(columns, rows, config, sidebarWidthOverride);
+  return mainArea;
+}
+
+function getSidebarAreaRect(
+  columns: number,
+  rows: number,
+  config: TuiConfig,
+  sidebarWidthOverride?: number
+): { x: number; y: number; width: number; height: number } {
+  const { sidebarArea } = getBodyColumnRects(columns, rows, config, sidebarWidthOverride);
+  return sidebarArea;
+}
+
+function getBodyColumnRects(
+  columns: number,
+  rows: number,
+  config: TuiConfig,
+  sidebarWidthOverride?: number
+): {
+  sidebarArea: { x: number; y: number; width: number; height: number };
+  mainArea: { x: number; y: number; width: number; height: number };
+} {
   const width = Math.max(1, columns);
   const height = Math.max(1, rows);
   const outer = rect(width, Math.max(0, height - 1));
@@ -710,7 +829,22 @@ function getMainAreaRect(
       length(sidebarWidth > 0 ? 1 : 0),
       fill()
     ]);
-  return bodyColumns[2];
+  return {
+    sidebarArea: bodyColumns[0],
+    mainArea: bodyColumns[2]
+  };
+}
+
+function getContentListScroll(state: TuiState, visibleCapacity: number): number {
+  const maxScroll = Math.max(0, state.items.length - visibleCapacity);
+  const current = Math.min(Math.max(0, state.scroll), maxScroll);
+  if (state.itemIndex < current) {
+    return state.itemIndex;
+  }
+  if (state.itemIndex >= current + visibleCapacity) {
+    return Math.min(maxScroll, state.itemIndex - visibleCapacity + 1);
+  }
+  return current;
 }
 
 function withinRect(column: number, row: number, area: { x: number; y: number; width: number; height: number }): boolean {
