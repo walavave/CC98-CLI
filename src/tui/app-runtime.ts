@@ -32,6 +32,7 @@ interface RuntimeContext {
   config: TuiConfig;
   keymap: TuiKeymap;
   state: TuiState;
+  getSize: () => { columns: number; rows: number };
   render: () => void;
   load: (force?: boolean) => Promise<void>;
   nextSignal: () => AbortSignal;
@@ -43,8 +44,7 @@ export function createMouseHandler(
   context: RuntimeContext,
   handleScroll: (state: TuiState, delta: number) => void,
   clampSidebarWidth: (value: number, totalWidth: number) => number,
-  getDividerColumn: () => number,
-  getSize: () => { columns: number; rows: number }
+  getDividerColumn: () => number
 ): (event: MouseEvent) => void {
   let pendingScrollRender: ReturnType<typeof setTimeout> | undefined;
   const scheduleScrollRender = () => {
@@ -64,7 +64,7 @@ export function createMouseHandler(
       }
       return;
     }
-    const size = getSize();
+    const size = context.getSize();
     const dividerColumn = getDividerColumn();
     const withinFrame = event.row >= 2 && event.row < size.rows - 1;
     if (event.kind === "down" && event.button === "wheel-up") {
@@ -73,8 +73,12 @@ export function createMouseHandler(
       return;
     }
     if (event.kind === "down" && event.button === "wheel-down") {
+      const wasAtTopicEnd = isAtTopicEnd(state, context.config, size.rows);
       handleScroll(state, 3);
       scheduleScrollRender();
+      if (wasAtTopicEnd && state.mode === "topic" && state.topic?.hasMore && !state.loadingMore) {
+        void loadNextTopicPage(context.client, state, render, context.config, context.nextSignal(), true);
+      }
       return;
     }
     if (event.kind === "down" && event.button === "left" && withinFrame && event.column === dividerColumn) {
@@ -426,6 +430,14 @@ function handleTopicMode(context: RuntimeContext, key: string, keyAction: string
     render();
     return;
   }
+  if (key === "a" || keyAction === "topic.like-post") {
+    void reactToCurrentTopicPost(context, true);
+    return;
+  }
+  if (key === "s" || keyAction === "topic.dislike-post") {
+    void reactToCurrentTopicPost(context, false);
+    return;
+  }
   if (key === "h" || key === "\x1b[D") {
     abortCurrent();
     leaveTopicMode(state);
@@ -440,7 +452,7 @@ function handleTopicMode(context: RuntimeContext, key: string, keyAction: string
   }
   if (key === "j" || key === "\x1b[B") {
     const maxScroll = Math.max(0, (state.topic?.lines.length ?? 0) - 1);
-    const wasAtEnd = state.scroll >= maxScroll;
+    const wasAtEnd = isAtTopicEnd(state, config, context.getSize().rows);
     state.scroll = Math.min(maxScroll, state.scroll + 1);
     state.status = getStatus(state);
     render();
@@ -472,6 +484,88 @@ function handleTopicMode(context: RuntimeContext, key: string, keyAction: string
       void openTopic(client, state, state.topic.topicId, render, config, true, nextSignal());
     }
     return;
+  }
+}
+
+function isAtTopicEnd(state: TuiState, config: TuiConfig, totalRows: number): boolean {
+  if (!state.topic) {
+    return false;
+  }
+  const viewport = getTopicViewportHeight(config, totalRows);
+  if (viewport <= 0) {
+    return state.scroll >= Math.max(0, state.topic.lines.length - 1);
+  }
+  return state.scroll + viewport >= state.topic.lines.length;
+}
+
+function getTopicViewportHeight(config: TuiConfig, totalRows: number): number {
+  const mainHeight = config.hideTopChrome
+    ? Math.max(1, totalRows - 3)
+    : Math.max(1, totalRows - 7);
+  return Math.max(0, mainHeight - 4);
+}
+
+async function reactToCurrentTopicPost(context: RuntimeContext, isLike: boolean): Promise<void> {
+  const { state, client, render } = context;
+  const topic = state.topic;
+  if (!topic || state.loadingMore) {
+    return;
+  }
+
+  const post = currentTopicPost(topic, state.scroll);
+  if (!post?.id) {
+    state.status = "当前楼层不可赞踩";
+    render();
+    return;
+  }
+
+  state.status = isLike ? "正在点赞..." : "正在点踩...";
+  render();
+
+  try {
+    await client.reactToPost(post.id, isLike);
+    const latest = await client.getPostReactionState(post.id, true);
+    if (typeof latest === "object" && latest !== null) {
+      const reaction = latest as {
+        likeCount?: unknown;
+        dislikeCount?: unknown;
+        likeState?: unknown;
+      };
+      if (typeof reaction.likeCount === "number" && Number.isFinite(reaction.likeCount)) {
+        post.likeCount = reaction.likeCount;
+      }
+      if (typeof reaction.dislikeCount === "number" && Number.isFinite(reaction.dislikeCount)) {
+        post.dislikeCount = reaction.dislikeCount;
+      }
+      post.likeState = reaction.likeState === 1 || reaction.likeState === 2 ? reaction.likeState : 0;
+    }
+    updateTopicPostHeader(post, topic);
+    showNotification(
+      state,
+      post.likeState === 1 ? `已赞 ${post.floor ?? "?"} 楼` :
+        post.likeState === 2 ? `已踩 ${post.floor ?? "?"} 楼` :
+          `已取消 ${post.floor ?? "?"} 楼的赞踩`
+    );
+    state.status = getStatus(state);
+  } catch (error) {
+    state.error = error instanceof Error ? error.message : String(error);
+    state.status = isLike ? "点赞失败" : "点踩失败";
+  } finally {
+    render();
+  }
+}
+
+function updateTopicPostHeader(post: NonNullable<TuiState["topic"]>["posts"][number], topic: NonNullable<TuiState["topic"]>): void {
+  const floor = post.floor !== undefined ? `#${post.floor}` : "#?";
+  const reaction = ` · ${post.likeCount} 赞 · ${post.dislikeCount} 踩`;
+  const header = `${floor} ${post.author}${post.time ? ` · ${post.time}` : ""}${reaction}`;
+  const headerLine = post.lines.find((entry) => entry.kind === "header");
+  if (!headerLine) {
+    return;
+  }
+  headerLine.text = header;
+  if (headerLine.line >= 0 && headerLine.line < topic.lines.length) {
+    topic.lines[headerLine.line] = header;
   }
 }
 

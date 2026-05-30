@@ -355,6 +355,9 @@ function getKeyHints(state: TuiState): string {
   if (state.currentChat) {
     hints.push("n 更多");
   }
+  if (state.mode === "topic") {
+    hints.push("a 赞", "s 踩");
+  }
   hints.push("r 刷新", "? 帮助", "q 退出");
   return hints.join(" ");
 }
@@ -374,6 +377,7 @@ function drawHelpModal(baseLines: string[], width: number, height: number): stri
     " 操作",
     "   r           刷新当前视图",
     "   n           加载更多",
+    "   a / s       对当前楼层点赞 / 点踩",
     "   Space       帖子内看图",
     "   ←/→         预览切图",
     "   ?           显示/关闭帮助",

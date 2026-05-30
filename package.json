@@ -8,7 +8,8 @@
   },
   "files": [
     "dist",
-    "docs/images/tui.jpg",
+    "docs/images/tui.png",
+    "docs/images/tui2.png",
     "CHANGELOG.md"
   ],
   "scripts": {
@@ -20,7 +21,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+git@two.github.com:walavave/CC98-CLI.git"
+    "url": "git+https://github.com/walavave/CC98-CLI.git"
   },
   "bugs": {
     "url": "https://github.com/walavave/CC98-CLI/issues"

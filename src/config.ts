@@ -3,7 +3,12 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 export interface AppConfig {
+  account: AccountConfig;
   tui: TuiConfig;
+}
+
+export interface AccountConfig {
+  autoSignin: boolean;
 }
 
 export interface TuiConfig {
@@ -12,6 +17,9 @@ export interface TuiConfig {
 }
 
 const defaultConfig: AppConfig = {
+  account: {
+    autoSignin: true
+  },
   tui: {
     hideTopChrome: false,
     previewImages: true
@@ -37,8 +45,12 @@ export function getConfigFilePath(): string {
 }
 
 function mergeConfig(base: AppConfig, parsed: Record<string, Record<string, unknown>>): AppConfig {
+  const account = parsed.account ?? {};
   const tui = parsed.tui ?? {};
   return {
+    account: {
+      autoSignin: booleanValue(account.auto_signin, base.account.autoSignin)
+    },
     tui: {
       hideTopChrome: booleanValue(tui.hide_top_chrome, base.tui.hideTopChrome),
       previewImages: booleanValue(tui.preview_images, base.tui.previewImages)

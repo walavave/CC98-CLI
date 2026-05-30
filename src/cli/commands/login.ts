@@ -1,3 +1,5 @@
+import { maybeAutoSignin } from "../../auto-signin.js";
+import { loadConfig } from "../../config.js";
 import { createCliContext } from "../context.js";
 import { extractAccountOption } from "../options.js";
 import { promptPassword, promptText, readStdinText } from "../prompt.js";
@@ -37,6 +39,7 @@ export async function loginCommand(args: string[] = []): Promise<void> {
       username,
       displayName: typeof me.name === "string" ? me.name : undefined
     });
+    await maybeAutoSignin(client, tokenStore.withAccount(account), loadConfig(), account);
     const name = typeof me.name === "string" ? me.name : username;
     const id = typeof me.id === "number" ? `#${me.id}` : "";
     console.log(`logged in as ${name}${id ? ` ${id}` : ""} (${account})`);

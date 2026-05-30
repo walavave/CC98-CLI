@@ -1,4 +1,5 @@
 import { Cc98Client } from "../api/client.js";
+import { maybeAutoSignin } from "../auto-signin.js";
 import type { WebVpnOptions } from "../api/types.js";
 import { loadConfig } from "../config.js";
 import { TokenStore } from "../storage/token-store.js";
@@ -20,21 +21,17 @@ import { Terminal } from "./terminal.js";
 export async function runTui(): Promise<void> {
   const terminal = new Terminal();
   const tokenStore = new TokenStore();
-  const vpnStore = new VpnStore();
   const config = loadConfig();
   const keymap = loadTuiKeymap();
-  const vpnConfig = await vpnStore.getConfig();
-  const webVpnOptions: WebVpnOptions | undefined =
-    vpnConfig.mode === "direct"
-      ? { mode: "direct" }
-      : vpnConfig.mode === "vpn" || vpnConfig.cookies
-        ? { mode: vpnConfig.mode, cookies: vpnConfig.cookies }
-        : undefined;
+  const vpnConfig = await new VpnStore().getConfig();
+  const webVpnOptions = getWebVpnOptions(vpnConfig);
   const rawClient = new Cc98Client({ tokenStore, webVpn: webVpnOptions });
   if (webVpnOptions) {
     await rawClient.initWebVpn();
   }
+  await maybeAutoSignin(rawClient, tokenStore, config);
   const client = new CachedCc98Client(rawClient);
+  const getSize = terminal.size.bind(terminal);
   let exitRequested = false;
   const state: TuiState = {
     mode: "list",
@@ -75,7 +72,7 @@ export async function runTui(): Promise<void> {
       const abortCurrent = () => currentAbort?.abort();
       const render = () => {
         if (!closed) {
-          terminal.render(draw(state, terminal.size(), config.tui));
+          terminal.render(draw(state, getSize(), config.tui));
         }
       };
       const load = async (force = false) => {
@@ -151,6 +148,7 @@ export async function runTui(): Promise<void> {
           config: config.tui,
           keymap,
           state,
+          getSize,
           render,
           load,
           nextSignal,
@@ -159,8 +157,7 @@ export async function runTui(): Promise<void> {
         },
         handleMouseScroll,
         clampSidebarWidth,
-        () => getSidebarDividerColumn(terminal.size().columns, state.sidebarWidth),
-        terminal.size.bind(terminal)
+        () => getSidebarDividerColumn(getSize().columns, state.sidebarWidth)
       ));
       const offKey = terminal.onKey(createKeyHandler({
         client,
@@ -169,6 +166,7 @@ export async function runTui(): Promise<void> {
         config: config.tui,
         keymap,
         state,
+        getSize,
         render,
         load,
         nextSignal,
@@ -185,4 +183,14 @@ export async function runTui(): Promise<void> {
       process.exit(0);
     }
   }
+}
+
+function getWebVpnOptions(config: Awaited<ReturnType<VpnStore["getConfig"]>>): WebVpnOptions | undefined {
+  if (config.mode === "direct") {
+    return { mode: "direct" };
+  }
+  if (config.mode === "vpn" || config.cookies) {
+    return { mode: config.mode, cookies: config.cookies };
+  }
+  return undefined;
 }

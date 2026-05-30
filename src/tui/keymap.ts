@@ -2,7 +2,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export type TuiAction = "topic.next-reply" | "topic.previous-reply";
+export type TuiAction =
+  | "topic.next-reply"
+  | "topic.previous-reply"
+  | "topic.like-post"
+  | "topic.dislike-post";
 
 interface KeyBinding {
   on: string[][];
@@ -19,6 +23,8 @@ export interface TuiKeymap {
 }
 
 const defaultBindings: KeyBinding[] = [
+  { on: [expandKeyToken("a")], run: "topic.like-post" },
+  { on: [expandKeyToken("s")], run: "topic.dislike-post" },
   { on: [expandKeyToken("<A-Down>")], run: "topic.next-reply" },
   { on: [expandKeyToken("<A-Up>")], run: "topic.previous-reply" }
 ];
@@ -223,6 +229,8 @@ function normalizeRunAction(value: string): TuiAction | undefined {
   switch (value) {
     case "topic.next-reply":
     case "topic.previous-reply":
+    case "topic.like-post":
+    case "topic.dislike-post":
       return value;
     default:
       return undefined;

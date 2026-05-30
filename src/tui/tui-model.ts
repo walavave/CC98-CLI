@@ -108,6 +108,7 @@ export interface TopicPostEntry {
   time: string;
   likeCount: number;
   dislikeCount: number;
+  likeState: 0 | 1 | 2;
   rating?: string;
   preview: string;
   lineStart: number;

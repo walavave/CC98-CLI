@@ -60,6 +60,7 @@ export function renderUbbToLines(content: string, width: number, options: Render
     return `\n${code.split("\n").map((line) => `    ${line}`).join("\n")}\n`;
   });
 
+  text = replaceInlineEmotionTags(text);
   text = stripUbb(text);
   text = decodeHtml(text);
 
@@ -124,6 +125,13 @@ function stripUbb(value: string): string {
     .replace(/\[(?:\/)?(?:b|i|u|size|color|align|email|del|s|sub|sup|h\d?)(?:=[^\]]*)?\]/gi, "")
     .replace(/\[[a-z0-9]+(?:=[^\]]*)?\]/gi, "")
     .replace(/\[\/[a-z0-9]+\]/gi, "");
+}
+
+function replaceInlineEmotionTags(value: string): string {
+  return value
+    .replace(/\[(ac(?:\d{2}|\d{4})|em\d{2}|tb\d{2}|ms\d{2,3}|[acf]:\d{3})\](?:\[\/\1\])?/gi, (_match, tag: string) => {
+      return `:${String(tag).toLowerCase()}:`;
+    });
 }
 
 function decodeHtml(value: string): string {

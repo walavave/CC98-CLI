@@ -12,6 +12,10 @@ export function getTokenFilePath(): string {
   return join(getConfigDir(), "tokens.json");
 }
 
+export function getAutoSigninStatePath(): string {
+  return join(getConfigDir(), "auto-signin.json");
+}
+
 export function getCacheDir(): string {
   return join(getConfigDir(), "cache");
 }

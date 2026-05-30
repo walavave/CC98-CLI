@@ -58,5 +58,8 @@ export const endpoints = {
   post: {
     reactionState: (postId: number) => `${base}/post/${postId}/like`,
     rateReasons: (type: number) => `${base}/post/rating-reason?type=${type}`
+  },
+  write: {
+    signin: `${base}/me/signin`
   }
 } as const;

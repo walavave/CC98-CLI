@@ -75,6 +75,7 @@ Usage:
   cc98 account use <name>   Set current account
   cc98 logout               Remove saved tokens
   cc98 me                   Show current user profile
+  cc98 me signin            Sign in daily
   cc98 forum index          Read forum index config
   cc98 forum boards         Read all boards
   cc98 board <board-id>     List topics in a board

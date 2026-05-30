@@ -57,6 +57,21 @@ cc98 account use <name>
 cc98 --account <name> me
 ```
 
+登录成功后会按账号自动执行每日签到；默认每天最多尝试一次，使用北京时间日期判断。
+
+如需关闭：
+
+```toml
+[account]
+auto_signin = false
+```
+
+也可以手动执行：
+
+```bash
+cc98 me signin
+```
+
 ## TUI
 
 ```bash
@@ -73,6 +88,7 @@ Enter             确认执行
 r                 刷新
 ?                 显示帮助
 n 或 Space        加载更多
+a / s             对当前楼层点赞 / 点踩
 q                 退出
 ```
 
@@ -97,10 +113,12 @@ preview_images = true
 prepend_keymap = [
   { on = "<A-Down>", run = "topic.next-reply", desc = "下一条回复" },
   { on = "<A-Up>", run = "topic.previous-reply", desc = "上一条回复" },
+  { on = "A", run = "topic.like-post", desc = "点赞当前楼层" },
+  { on = "S", run = "topic.dislike-post", desc = "点踩当前楼层" },
 ]
 ```
 
-默认已内置 `<A-Down>` / `<A-Up>` 用于在主题阅读模式下跳转相邻回复。
+默认已内置 `a` / `s` 用于在主题阅读模式下对当前楼层点赞、点踩，`<A-Down>` / `<A-Up>` 用于跳转相邻回复。
 
 ## CLI
 

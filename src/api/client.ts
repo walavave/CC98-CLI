@@ -220,8 +220,28 @@ export class Cc98Client {
     return this.request<unknown>(endpoints.post.reactionState(postId));
   }
 
+  async reactToPost(postId: number, isLike: boolean): Promise<unknown> {
+    return this.request<unknown>(endpoints.post.reactionState(postId), {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(isLike ? 1 : 2)
+    });
+  }
+
   async getPostRateReasons(type: number): Promise<unknown> {
     return this.request<unknown>(endpoints.post.rateReasons(type));
+  }
+
+  async signin(): Promise<unknown> {
+    return this.request<unknown>(endpoints.write.signin, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify("")
+    });
   }
 
   private async request<T>(url: string, init: RequestInit = {}, authorize = true): Promise<T> {

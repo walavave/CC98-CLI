@@ -1,5 +1,7 @@
 import { Cc98Client } from "../api/client.js";
+import { maybeAutoSignin } from "../auto-signin.js";
 import type { WebVpnOptions } from "../api/types.js";
+import { loadConfig } from "../config.js";
 import { VpnStore } from "../storage/vpn-store.js";
 import { TokenStore } from "../storage/token-store.js";
 
@@ -11,6 +13,7 @@ export async function createCliContext(options: { account?: string } = {}): Prom
   if (webVpn) {
     await client.initWebVpn();
   }
+  await maybeAutoSignin(client, tokenStore, loadConfig());
   return { client, tokenStore };
 }
 

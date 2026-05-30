@@ -91,6 +91,21 @@ export class CachedCc98Client {
     );
   }
 
+  getPostReactionState(postId: number, force = false, signal?: AbortSignal): Promise<unknown> {
+    return this.cache.getOrSet(
+      `post:reaction-state:${postId}`,
+      10 * second,
+      () => this.client.getPostReactionState(postId),
+      { force }
+    );
+  }
+
+  async reactToPost(postId: number, isLike: boolean): Promise<unknown> {
+    const result = await this.client.reactToPost(postId, isLike);
+    await this.cache.delete(`post:reaction-state:${postId}`);
+    return result;
+  }
+
   /**
    * Clear all caches (memory + file)
    */

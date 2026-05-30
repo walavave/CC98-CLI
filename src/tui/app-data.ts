@@ -217,11 +217,7 @@ export async function loadNextTopicPage(
 
   try {
     const posts = asArray(await client.getTopicPosts(state.topic.topicId, state.topic.loaded, state.topic.size, false, signal));
-    const next = renderPosts(posts, Math.max(36, currentTopicWidthEstimate(state.sidebarWidth)), config, state.topic.lines.length);
-    state.topic.lines.push(...next.lines);
-    state.topic.posts.push(...next.posts);
-    state.topic.imageCount += next.imageCount;
-    state.topic.linkCount += next.linkCount;
+    appendTopicPosts(state.topic, posts, config, state.sidebarWidth);
     void loadTopicImagePreviews(state, render, config, state.sidebarWidth);
     state.topic.loaded += posts.length;
     state.topic.hasMore = posts.length === state.topic.size;
@@ -270,12 +266,8 @@ export async function jumpToTopicFloor(
 
   try {
     const posts = asArray(await client.getTopicPosts(topic.topicId, from, topic.size, false, signal));
-    const next = renderPosts(posts, Math.max(36, currentTopicWidthEstimate(state.sidebarWidth)), config, topic.lines.length);
-    topic.lines.push(...next.lines);
-    topic.posts.push(...next.posts);
+    appendTopicPosts(topic, posts, config, state.sidebarWidth);
     topic.posts.sort((left, right) => (left.floor ?? 0) - (right.floor ?? 0));
-    topic.imageCount += next.imageCount;
-    topic.linkCount += next.linkCount;
     void loadTopicImagePreviews(state, render, config, state.sidebarWidth);
     topic.loaded = Math.max(topic.loaded, from + posts.length);
     topic.hasMore = posts.length === topic.size;
@@ -619,6 +611,24 @@ function buildTopicReader(
   };
 }
 
+function appendTopicPosts(
+  topic: TopicReaderState,
+  posts: unknown[],
+  config: TuiConfig,
+  sidebarWidthOverride?: number
+): void {
+  const next = renderPosts(
+    posts,
+    Math.max(36, currentTopicWidthEstimate(sidebarWidthOverride)),
+    config,
+    topic.lines.length
+  );
+  topic.lines.push(...next.lines);
+  topic.posts.push(...next.posts);
+  topic.imageCount += next.imageCount;
+  topic.linkCount += next.linkCount;
+}
+
 function renderPosts(
   posts: unknown[],
   width: number,
@@ -645,6 +655,7 @@ function renderPosts(
     const time = typeof post.time === "string" ? post.time.replace("T", " ").slice(0, 16) : "";
     const likeCount = asNumber(post.likeCount) ?? 0;
     const dislikeCount = asNumber(post.dislikeCount) ?? 0;
+    const likeState = normalizeLikeState(post.likeState);
     const reactions = ` · ${likeCount} 赞 · ${dislikeCount} 踩`;
     const push = (
       text: string,
@@ -710,6 +721,7 @@ function renderPosts(
       time,
       likeCount,
       dislikeCount,
+      likeState,
       rating: formatRating(post),
       preview,
       lineStart,
@@ -725,6 +737,10 @@ function renderPosts(
   });
 
   return { lines, posts: entries, imageCount, linkCount };
+}
+
+function normalizeLikeState(value: unknown): 0 | 1 | 2 {
+  return value === 1 || value === 2 ? value : 0;
 }
 
 function findTopicPostByFloor(topic: TopicReaderState, floor: number): TopicPostEntry | undefined {
