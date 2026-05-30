@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { extname, isAbsolute, join } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { getCacheDir } from "../storage/paths.js";
 
@@ -91,11 +92,11 @@ async function resolveTerminalImage(
   url: string,
   size: TerminalImageSize
 ): Promise<{ data: Buffer; fittedSize: TerminalImageSize } | undefined> {
-  if (!/^https?:\/\//i.test(url) || !isPreviewableImageUrl(url)) {
+  if (!isSupportedImageSource(url)) {
     return undefined;
   }
 
-  const sourcePath = await ensureCachedImage(url);
+  const sourcePath = await resolveImageSource(url);
   if (!sourcePath) {
     return undefined;
   }
@@ -137,6 +138,20 @@ async function ensureCachedImage(url: string): Promise<string> {
     await writeFile(path, data, { mode: 0o600 });
     return path;
   }
+}
+
+async function resolveImageSource(url: string): Promise<string | undefined> {
+  if (/^https?:\/\//i.test(url)) {
+    return ensureCachedImage(url);
+  }
+
+  const localPath = toLocalImagePath(url);
+  if (!localPath) {
+    return undefined;
+  }
+
+  await readFile(localPath);
+  return localPath;
 }
 
 async function ensureRenderableImage(path: string): Promise<string> {
@@ -204,12 +219,31 @@ function imageCachePath(url: string): string {
   return join(getCacheDir(), "images", `${hash}${extension}`);
 }
 
-function isPreviewableImageUrl(url: string): boolean {
+function isSupportedImageSource(url: string): boolean {
+  return isHttpImageUrl(url) || isLocalImagePath(url);
+}
+
+function isHttpImageUrl(url: string): boolean {
   try {
     return /\.(?:png|jpe?g|gif|webp|bmp|svg|avif|heic|heif)$/i.test(new URL(url).pathname);
   } catch {
     return false;
   }
+}
+
+function isLocalImagePath(url: string): boolean {
+  const localPath = toLocalImagePath(url);
+  return localPath !== undefined && /\.(?:png|jpe?g|gif|webp|bmp|svg|avif|heic|heif)$/i.test(localPath);
+}
+
+function toLocalImagePath(url: string): string | undefined {
+  if (isAbsolute(url)) {
+    return url;
+  }
+  if (url.startsWith("file://")) {
+    return fileURLToPath(url);
+  }
+  return undefined;
 }
 
 function kittyImage(data: Buffer, size: TerminalImageSize): string {

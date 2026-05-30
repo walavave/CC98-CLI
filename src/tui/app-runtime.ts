@@ -14,6 +14,7 @@ import {
   refreshAccounts,
   restoreParentList
 } from "./app-data.js";
+import { isEmotionAssetPath } from "./emotion-preview.js";
 import { loadModalImagePreview, supportsImagePreview } from "./image-preview.js";
 import { fill, length, pad, rect, split } from "./layout.js";
 import { getSidebarWidth } from "./renderer.js";
@@ -604,16 +605,20 @@ async function openTopicImageViewer(context: RuntimeContext): Promise<void> {
     return;
   }
 
-  const images = topic.posts.flatMap((post) => post.images);
+  const images = topic.posts
+    .flatMap((post) => post.images)
+    .filter((url) => !isEmotionAssetPath(url));
   if (images.length === 0) {
-    state.status = "当前帖子没有可预览的图片";
+    state.status = "当前帖子没有可预览的大图";
     render();
     return;
   }
 
   const currentLine = currentTopicLine(topic, state.scroll);
   const currentPost = currentTopicPost(topic, state.scroll);
-  const targetUrl = currentLine?.imageUrl ?? currentPost?.images[0] ?? images[0];
+  const targetUrl = !isEmotionAssetPath(currentLine?.imageUrl ?? "")
+    ? currentLine?.imageUrl
+    : currentPost?.images.find((url) => !isEmotionAssetPath(url)) ?? images[0];
   const index = Math.max(0, images.findIndex((url) => url === targetUrl));
   state.imageViewer = {
     images,

@@ -8,6 +8,7 @@
   },
   "files": [
     "dist",
+    "assets/forum-images",
     "docs/images/tui.png",
     "docs/images/tui2.png",
     "CHANGELOG.md"

@@ -1,3 +1,6 @@
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { emotionPreviewRows } from "./emotion-preview.js";
 import { theme } from "./theme.js";
 
 export interface RenderedPost {
@@ -9,6 +12,11 @@ export interface RenderedPost {
 interface RenderOptions {
   imagePreviewRows?: number;
 }
+
+const moduleDir = dirname(fileURLToPath(import.meta.url));
+const forumImageRoot = join(moduleDir, "..", "..", "assets", "forum-images");
+const mediaBlockStart = "@@CC98_MEDIA_START@@";
+const mediaBlockEnd = "@@CC98_MEDIA_END@@";
 
 export function renderUbbToLines(content: string, width: number, options: RenderOptions = {}): RenderedPost {
   const images: string[] = [];
@@ -60,7 +68,9 @@ export function renderUbbToLines(content: string, width: number, options: Render
     return `\n${code.split("\n").map((line) => `    ${line}`).join("\n")}\n`;
   });
 
-  text = replaceInlineEmotionTags(text);
+  text = normalizeMediaBlocks(text);
+  text = replaceInlineEmotionTags(text, images, options.imagePreviewRows);
+  text = normalizeMediaBlocks(text);
   text = stripUbb(text);
   text = decodeHtml(text);
 
@@ -111,6 +121,7 @@ export function renderMarkdownToLines(content: string, width: number, options: R
   text = text.replace(/~~([^~]+)~~/g, "$1");
   text = text.replace(/^\s*[-*+]\s+/gm, "• ");
   text = text.replace(/^\s*\d+\.\s+/gm, (match) => match.replace(/^\s*/, ""));
+  text = normalizeMediaBlocks(text);
   text = decodeHtml(text);
 
   return {
@@ -127,11 +138,55 @@ function stripUbb(value: string): string {
     .replace(/\[\/[a-z0-9]+\]/gi, "");
 }
 
-function replaceInlineEmotionTags(value: string): string {
+function replaceInlineEmotionTags(value: string, images: string[], previewRows = 0): string {
   return value
-    .replace(/\[(ac(?:\d{2}|\d{4})|em\d{2}|tb\d{2}|ms\d{2,3}|[acf]:\d{3})\](?:\[\/\1\])?/gi, (_match, tag: string) => {
-      return `:${String(tag).toLowerCase()}:`;
+    .replace(/\[(ac(?:\d{2}|\d{4})|cc98\d{2}|em\d{2}|tb\d{2}|ms\d{2,3}|[acf]:\d{3})\](?:\[\/\1\])?/gi, (_match, tag: string) => {
+      const imagePath = resolveEmotionImagePath(String(tag).toLowerCase());
+      if (!imagePath) {
+        return `:${String(tag).toLowerCase()}:`;
+      }
+      images.push(imagePath);
+      return emotionBlock(images.length, imagePath, previewRows || emotionPreviewRows);
     });
+}
+
+function resolveEmotionImagePath(tag: string): string | undefined {
+  if (/^ac(\d{2}|\d{4})$/i.test(tag)) {
+    const id = tag.slice(2);
+    return join(forumImageRoot, "ac", `${id}.png`);
+  }
+  if (/^cc98\d{2}$/i.test(tag)) {
+    const id = tag.slice(4);
+    const number = Number(id);
+    const extension = number > 14 && number < 31 || number > 35 ? "png" : "gif";
+    return join(forumImageRoot, "CC98", `CC98${id}.${extension}`);
+  }
+  if (/^em\d{2}$/i.test(tag)) {
+    return join(forumImageRoot, "em", `${tag.toLowerCase()}.gif`);
+  }
+  if (/^tb\d{2}$/i.test(tag)) {
+    return join(forumImageRoot, "tb", `${tag.toLowerCase()}.png`);
+  }
+  if (/^ms\d{2,3}$/i.test(tag)) {
+    const digits = tag.slice(2).padStart(2, "0");
+    return join(forumImageRoot, "ms", `ms${digits}.png`);
+  }
+  const mahjong = /^([acf]):(\d{3})$/i.exec(tag);
+  if (!mahjong) {
+    return undefined;
+  }
+  const type = mahjong[1]?.toLowerCase();
+  const id = mahjong[2] ?? "";
+  switch (type) {
+    case "a":
+      return join(forumImageRoot, "mahjong", "animal2017", `${id}.png`);
+    case "c":
+      return join(forumImageRoot, "mahjong", "carton2017", mahjongGifIds.has(id) ? `${id}.gif` : `${id}.png`);
+    case "f":
+      return join(forumImageRoot, "mahjong", "face2017", mahjongFaceGifIds.has(id) ? `${id}.gif` : `${id}.png`);
+    default:
+      return undefined;
+  }
 }
 
 function decodeHtml(value: string): string {
@@ -167,8 +222,20 @@ function normalizeMarkdownTarget(value: string): string {
 
 function imageBlock(index: number, url: string, previewRows = 0): string {
   const reservedRows = Math.max(0, Math.floor(previewRows));
-  const padding = reservedRows > 1 ? `\n${Array.from({ length: reservedRows - 1 }, () => "").join("\n")}` : "";
-  return `\n[image ${index}] ${shortUrl(url)}${padding}\n`;
+  const padding = "\n".repeat(Math.max(0, reservedRows - 1));
+  return `${mediaBlockStart}[image ${index}] ${shortUrl(url)}${padding}${mediaBlockEnd}`;
+}
+
+function emotionBlock(index: number, url: string, previewRows = emotionPreviewRows): string {
+  return imageBlock(index, url, previewRows);
+}
+
+function normalizeMediaBlocks(value: string): string {
+  return value
+    .replace(new RegExp(`([^\\n])${escapeRegExp(mediaBlockStart)}`, "g"), `$1\n${mediaBlockStart}`)
+    .replace(new RegExp(`${escapeRegExp(mediaBlockEnd)}([^\\n])`, "g"), `${mediaBlockEnd}\n$1`)
+    .replace(new RegExp(mediaBlockStart, "g"), "")
+    .replace(new RegExp(mediaBlockEnd, "g"), "");
 }
 
 function wrapLines(value: string, width: number): string[] {
@@ -206,7 +273,7 @@ function shortUrl(value: string): string {
     const fileName = url.pathname.split("/").filter(Boolean).at(-1) ?? "";
     return `${url.host}/${fileName}`;
   } catch {
-    return value;
+    return value.split(/[\\/]/).at(-1) ?? value;
   }
 }
 
@@ -215,9 +282,12 @@ function isPreviewableImageUrl(value: string): boolean {
     const pathname = new URL(value).pathname.toLowerCase();
     return /\.(?:png|jpe?g|gif|webp|bmp|svg|avif|heic|heif)$/i.test(pathname);
   } catch {
-    return false;
+    return /\.(?:png|jpe?g|gif|webp|bmp|svg|avif|heic|heif)$/i.test(value);
   }
 }
+
+const mahjongGifIds = new Set(["018", "049", "096"]);
+const mahjongFaceGifIds = new Set(["004", "009", "056", "061", "062", "087", "115", "120", "137", "168", "169", "175", "206"]);
 
 function charWidth(char: string): number {
   const code = char.codePointAt(0) ?? 0;
@@ -237,4 +307,8 @@ function charWidth(char: string): number {
     return 2;
   }
   return 1;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

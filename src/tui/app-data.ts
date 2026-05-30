@@ -1,3 +1,4 @@
+import { emotionPreviewRows, isEmotionAssetPath, loadEmotionPreview, measureEmotionPreview } from "./emotion-preview.js";
 import type { TuiConfig } from "../config.js";
 import { TokenStore } from "../storage/token-store.js";
 import { imagePreviewRows, loadImagePreview, measureImagePreview, supportsImagePreview } from "./image-preview.js";
@@ -536,10 +537,12 @@ async function loadTopicImagePreviews(
   }
 
   const width = Math.max(12, currentTopicWidthEstimate(sidebarWidthOverride) - 4);
-  const maxRows = imagePreviewRows;
   const imageLines = topic.posts
     .flatMap((post) => post.lines)
-    .filter((line) => line.kind === "image" && line.imageUrl);
+    .filter((line) =>
+      line.kind === "image" &&
+      line.imageUrl
+    );
   const previewEnabled = supportsImagePreview();
 
   for (const line of imageLines) {
@@ -548,8 +551,12 @@ async function loadTopicImagePreviews(
         return;
       }
 
+      const maxRows = isEmotionAssetPath(line.imageUrl ?? "") ? emotionPreviewRows : imagePreviewRows;
+
       if (!line.imagePreviewRows) {
-        const measured = await measureImagePreview(line.imageUrl ?? "", width, maxRows);
+        const measured = isEmotionAssetPath(line.imageUrl ?? "")
+          ? await measureEmotionPreview(line.imageUrl ?? "", width)
+          : await measureImagePreview(line.imageUrl ?? "", width, maxRows);
         if (state.topic !== topic) {
           return;
         }
@@ -564,8 +571,10 @@ async function loadTopicImagePreviews(
         continue;
       }
 
-      const rows = Math.max(1, Math.min(maxRows, line.imagePreviewRows ?? line.imageBlockRows ?? imagePreviewRows));
-      const preview = await loadImagePreview(line.imageUrl ?? "", width, rows);
+      const rows = Math.max(1, Math.min(maxRows, line.imagePreviewRows ?? line.imageBlockRows ?? maxRows));
+      const preview = isEmotionAssetPath(line.imageUrl ?? "")
+        ? await loadEmotionPreview(line.imageUrl ?? "", width)
+        : await loadImagePreview(line.imageUrl ?? "", width, rows);
       if (state.topic !== topic) {
         return;
       }
