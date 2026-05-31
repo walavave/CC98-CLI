@@ -5,7 +5,7 @@ import { loadConfig } from "../config.js";
 import { TokenStore } from "../storage/token-store.js";
 import { VpnStore } from "../storage/vpn-store.js";
 import { createLoginForm } from "./account-modal.js";
-import { loadView } from "./app-data.js";
+import { createSearchState, loadView } from "./app-data.js";
 import { createKeyHandler, createMouseHandler } from "./app-runtime.js";
 import { CachedCc98Client } from "./cached-client.js";
 import {
@@ -47,6 +47,7 @@ export async function runTui(): Promise<void> {
     viewTitle: "十大",
     items: [],
     overview: [],
+    currentSearch: undefined,
     modal: null,
     accountModal: {
       accounts: [],
@@ -95,6 +96,7 @@ export async function runTui(): Promise<void> {
         state.parentList = undefined;
         state.currentBoard = undefined;
         state.currentChat = undefined;
+        state.currentSearch = nav.id === "search" ? createSearchState() : undefined;
         render();
 
         try {

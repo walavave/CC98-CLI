@@ -163,6 +163,10 @@ function drawMain(state: TuiState, width: number, height: number): TopicDrawResu
     return drawTopic(state, width, height);
   }
 
+  if (state.currentSearch) {
+    return drawSearch(state, width, height);
+  }
+
   if (state.loading) {
     return { rows: [
       textStyle.primaryBold(` ${state.viewTitle}`),
@@ -233,6 +237,64 @@ function getListScroll(state: TuiState, visibleCapacity: number): number {
     return Math.min(maxScroll, state.itemIndex - visibleCapacity + 1);
   }
   return current;
+}
+
+function drawSearch(state: TuiState, width: number, height: number): TopicDrawResult {
+  const search = state.currentSearch;
+  if (!search) {
+    return { rows: blank(height, width), imageOverlays: [] };
+  }
+
+  const rows: string[] = [];
+  rows.push(textStyle.primaryBold(` ${state.viewTitle}`));
+
+  const inputText = search.draft || "";
+  const placeholder = inputText ? "" : "输入关键词后按 Enter";
+  const inputLabel = ` 搜索> ${inputText || placeholder}`;
+  if (search.focus === "input" && state.focus === "content") {
+    rows.push(selectedLine(fit(inputLabel, width), width, true));
+  } else if (inputText) {
+    rows.push(textStyle.primary(fit(inputLabel, width)));
+  } else {
+    rows.push(textStyle.muted(fit(inputLabel, width)));
+  }
+
+  rows.push(ruleLine(Math.max(0, width - 1)));
+
+  if (state.loading) {
+    rows.push(fit(textStyle.muted(" 正在搜索..."), width));
+    return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
+  }
+
+  const itemHeight = 2;
+  const visibleCapacity = Math.max(1, Math.floor(Math.max(1, height - 3) / itemHeight));
+  const scroll = getListScroll(state, visibleCapacity);
+  const visible = state.items.slice(scroll, scroll + visibleCapacity);
+
+  if (visible.length === 0) {
+    rows.push(textStyle.muted(search.searched ? " 暂无搜索结果" : " 在输入框中输入关键词并按 Enter"));
+    return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
+  }
+
+  visible.forEach((itemValue, offset) => {
+    if (rows.length + itemHeight > height) {
+      return;
+    }
+    const index = scroll + offset;
+    const active = index === state.itemIndex && state.focus === "content" && search.focus === "results";
+    const marker = active ? theme.marker.selected : theme.marker.normal;
+    const title = fit(` ${marker} ${listItemTitle(itemValue)}`, width);
+    rows.push(active ? selectedLine(title, width, true) : textStyle.muted(title));
+    rows.push(itemValue.meta ? fit(textStyle.muted(`  ${itemValue.meta}`), width) : " ".repeat(width));
+  });
+
+  if (scroll + visibleCapacity < state.items.length && rows.length < height) {
+    rows.push(fit(textStyle.muted(`  ↓ 还有 ${state.items.length - scroll - visibleCapacity} 项`), width));
+  } else if (search.hasMore && rows.length < height) {
+    rows.push(fit(textStyle.muted("  ↓ 到底自动继续加载，或按 n/Space"), width));
+  }
+
+  return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
 }
 
 function drawTopic(state: TuiState, width: number, height: number): TopicDrawResult {
@@ -358,7 +420,7 @@ function getKeyHints(state: TuiState): string {
   if (state.mode === "topic") {
     hints.push("a 赞", "s 踩");
   }
-  hints.push("r 刷新", "? 帮助", "q 退出");
+  hints.push("f 搜索", "r 刷新", "? 帮助", "q 退出");
   return hints.join(" ");
 }
 
@@ -375,6 +437,7 @@ function drawHelpModal(baseLines: string[], width: number, height: number): stri
     "   Enter       确认/执行",
     "",
     " 操作",
+    "   f           跳到搜索框",
     "   r           刷新当前视图",
     "   n           加载更多",
     "   a / s       对当前楼层点赞 / 点踩",

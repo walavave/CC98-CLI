@@ -2,10 +2,12 @@ import { checkForUpdate } from "../update.js";
 import type { TuiConfig } from "../config.js";
 import { createLoginForm, isPrintableInput, updateLoginField } from "./account-modal.js";
 import {
+  executeSearch,
   getDefaultAccountName,
   jumpRelativeTopicFloor,
   jumpToTopicFloor,
   loadNextChatPage,
+  loadNextSearchPage,
   loadNextTopicPage,
   normalizeLoginMessage,
   openBoard,
@@ -75,10 +77,13 @@ export function createMouseHandler(
     }
     if (event.kind === "down" && event.button === "wheel-down") {
       const wasAtTopicEnd = isAtTopicEnd(state, context.config, size.rows);
+      const wasAtSearchEnd = isAtSearchEnd(state);
       handleScroll(state, 3);
       scheduleScrollRender();
       if (wasAtTopicEnd && state.mode === "topic" && state.topic?.hasMore && !state.loadingMore) {
         void loadNextTopicPage(context.client, state, render, context.config, context.nextSignal(), true);
+      } else if (wasAtSearchEnd && state.currentSearch?.hasMore && !state.loadingMore && !state.loading) {
+        void loadNextSearchPage(context.client, state, render, context.nextSignal());
       }
       return;
     }
@@ -150,6 +155,11 @@ export function createKeyHandler(context: RuntimeContext): (key: string) => void
       return;
     }
 
+    if (keyAction === "search.focus-input") {
+      void focusSearchInput(context);
+      return;
+    }
+
     if (state.mode === "topic") {
       handleTopicMode(context, key, keyAction);
       return;
@@ -167,6 +177,42 @@ export function createKeyHandler(context: RuntimeContext): (key: string) => void
 
     handleContentFocus(context, key);
   };
+}
+
+async function focusSearchInput(context: RuntimeContext): Promise<void> {
+  const { state, render, load, abortCurrent } = context;
+  const searchNavIndex = navItems.findIndex((item) => item.id === "search");
+  if (searchNavIndex < 0) {
+    return;
+  }
+
+  if (state.navIndex === searchNavIndex && state.currentSearch) {
+    abortCurrent();
+    state.mode = "list";
+    state.focus = "content";
+    state.loading = false;
+    state.loadingMore = false;
+    state.error = undefined;
+    state.topic = undefined;
+    state.imageViewer = undefined;
+    state.currentSearch.focus = "input";
+    state.viewTitle = state.currentSearch.title;
+    state.status = getStatus(state);
+    render();
+    return;
+  }
+
+  abortCurrent();
+  state.navIndex = searchNavIndex;
+  await load();
+  if (navItems[state.navIndex]?.id !== "search" || !state.currentSearch) {
+    return;
+  }
+  state.mode = "list";
+  state.focus = "content";
+  state.currentSearch.focus = "input";
+  state.status = getStatus(state);
+  render();
 }
 
 function showNotification(state: TuiState, message: string, durationMs = 3200): void {
@@ -499,6 +545,15 @@ function isAtTopicEnd(state: TuiState, config: TuiConfig, totalRows: number): bo
   return state.scroll + viewport >= state.topic.lines.length;
 }
 
+function isAtSearchEnd(state: TuiState): boolean {
+  return Boolean(
+    state.currentSearch &&
+    state.currentSearch.focus === "results" &&
+    state.items.length > 0 &&
+    state.itemIndex >= state.items.length - 1
+  );
+}
+
 function getTopicViewportHeight(config: TuiConfig, totalRows: number): number {
   const mainHeight = config.hideTopChrome
     ? Math.max(1, totalRows - 3)
@@ -689,7 +744,11 @@ async function refreshTopicImageViewer(context: RuntimeContext, index: number): 
 function leaveTopicMode(state: TuiState): void {
   state.mode = "list";
   state.focus = "content";
-  state.viewTitle = state.currentBoard?.title ?? state.currentChat?.title ?? navItems[state.navIndex]?.label ?? state.viewTitle;
+  state.viewTitle = state.currentBoard?.title
+    ?? state.currentChat?.title
+    ?? state.currentSearch?.title
+    ?? navItems[state.navIndex]?.label
+    ?? state.viewTitle;
   state.status = getStatus(state);
 }
 
@@ -698,6 +757,9 @@ function enterContentMode(state: TuiState, resetIndex = false): void {
     state.mode = "settings";
   }
   state.focus = "content";
+  if (state.currentSearch && (resetIndex || state.items.length === 0)) {
+    state.currentSearch.focus = "input";
+  }
   if (resetIndex) {
     state.itemIndex = 0;
   }
@@ -840,6 +902,32 @@ function handleContentClick(
       return true;
     }
     state.itemIndex = rowIndex;
+    enterContentMode(state);
+    render();
+    return true;
+  }
+
+  if (state.currentSearch) {
+    const rowIndex = event.row - (mainArea.y + 1);
+    if (rowIndex === 1) {
+      state.currentSearch.focus = "input";
+      enterContentMode(state);
+      render();
+      return true;
+    }
+    if (rowIndex < 3) {
+      return true;
+    }
+    const itemHeight = 2;
+    const visibleCapacity = Math.max(1, Math.floor(Math.max(1, mainArea.height - 3) / itemHeight));
+    const scroll = getContentListScroll(state, visibleCapacity);
+    const itemOffset = Math.floor((rowIndex - 3) / itemHeight);
+    const itemIndex = scroll + itemOffset;
+    if (itemIndex < 0 || itemIndex >= state.items.length) {
+      return true;
+    }
+    state.itemIndex = itemIndex;
+    state.currentSearch.focus = "results";
     enterContentMode(state);
     render();
     return true;
@@ -1044,7 +1132,7 @@ function handleNavFocus(context: RuntimeContext, key: string): void {
     return;
   }
   if (key === "l" || key === "\x1b[C" || key === "\r") {
-    if (!state.loading && state.items.length > 0) {
+    if (!state.loading && (state.items.length > 0 || state.currentSearch)) {
       enterContentMode(state, key === "\r");
       render();
     }
@@ -1056,7 +1144,11 @@ function handleNavFocus(context: RuntimeContext, key: string): void {
 }
 
 function handleContentFocus(context: RuntimeContext, key: string): void {
-  const { state, render, client, config, nextSignal, abortCurrent, load } = context;
+  const { state, render, client, nextSignal, abortCurrent, load } = context;
+  if (state.currentSearch) {
+    handleSearchContentFocus(context, key);
+    return;
+  }
   if (key === "j" || key === "\x1b[B") {
     state.itemIndex = Math.min(Math.max(0, state.items.length - 1), state.itemIndex + 1);
     render();
@@ -1096,5 +1188,97 @@ function handleContentFocus(context: RuntimeContext, key: string): void {
     }
     void load(true);
     return;
+  }
+}
+
+function handleSearchContentFocus(context: RuntimeContext, key: string): void {
+  const { state, render, client, nextSignal, abortCurrent, load } = context;
+  const search = state.currentSearch;
+  if (!search) {
+    return;
+  }
+
+  if (key === "h" || key === "\x1b[D" || key === "\x1b") {
+    abortCurrent();
+    leaveContentMode(state);
+    render();
+    return;
+  }
+
+  if (search.focus === "input") {
+    if (key === "\x7f") {
+      search.draft = search.draft.slice(0, -1);
+      render();
+      return;
+    }
+    if (key === "\r") {
+      void executeSearch(client, state, render, false, nextSignal());
+      return;
+    }
+    if ((key === "j" || key === "\x1b[B" || key === "\t") && state.items.length > 0) {
+      search.focus = "results";
+      render();
+      return;
+    }
+    if (key === "r" && search.query) {
+      search.draft = search.query;
+      void executeSearch(client, state, render, true, nextSignal());
+      return;
+    }
+    if (isPrintableInput(key)) {
+      search.draft = `${search.draft}${key}`;
+      render();
+    }
+    return;
+  }
+
+  if (key === "i" || key === "/" || key === "\t") {
+    search.focus = "input";
+    render();
+    return;
+  }
+  if (key === "j" || key === "\x1b[B") {
+    const wasAtEnd = isAtSearchEnd(state);
+    state.itemIndex = Math.min(Math.max(0, state.items.length - 1), state.itemIndex + 1);
+    render();
+    if (wasAtEnd && search.hasMore && !state.loadingMore && !state.loading) {
+      void loadNextSearchPage(client, state, render, nextSignal());
+    }
+    return;
+  }
+  if (key === "k" || key === "\x1b[A") {
+    if (state.itemIndex === 0) {
+      search.focus = "input";
+    } else {
+      state.itemIndex = Math.max(0, state.itemIndex - 1);
+    }
+    render();
+    return;
+  }
+  if (key === "l" || key === "\x1b[C" || key === "\r") {
+    if (openSelectedItem(context)) {
+      return;
+    }
+    state.status = "当前条目不可进入";
+    render();
+    return;
+  }
+  if (key === "n" || key === " ") {
+    void loadNextSearchPage(client, state, render, nextSignal());
+    return;
+  }
+  if (key === "r") {
+    if (search.query) {
+      search.draft = search.query;
+      void executeSearch(client, state, render, true, nextSignal());
+      return;
+    }
+    void load(true);
+    return;
+  }
+  if (isPrintableInput(key)) {
+    search.focus = "input";
+    search.draft = `${search.draft}${key}`;
+    render();
   }
 }

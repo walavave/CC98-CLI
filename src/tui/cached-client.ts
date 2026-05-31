@@ -44,6 +44,15 @@ export class CachedCc98Client {
     return this.cache.getOrSet(`topic:new:${from}:${size}`, 20 * second, () => this.client.getNewTopics(from, size, { signal }), { force });
   }
 
+  searchTopics(keyword: string, from = 0, size = 10, force = false, signal?: AbortSignal): Promise<unknown> {
+    return this.cache.getOrSet(
+      `topic:search:${keyword}:${from}:${size}`,
+      20 * second,
+      () => this.client.searchTopics(keyword, from, size, { signal }),
+      { force }
+    );
+  }
+
   getFolloweeTopics(from = 0, size = 12, force = false, signal?: AbortSignal): Promise<unknown> {
     return this.cache.getOrSet(`user:followee-topic:${from}:${size}`, 30 * second, () => this.client.getMoment(from, size, { signal }), { force });
   }

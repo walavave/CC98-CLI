@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Use npm with trusted publishing support
+        run: npm install -g npm@11
+
+      - run: npm --version
+
+      - run: npm ci
+
+      - run: npm run check
+
+      - name: Build release notes
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const tag = process.env.GITHUB_REF_NAME ?? '';
+          const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
+          const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const pattern = new RegExp(`(?:^|\\n)## ${escaped}[^\n]*\n([\\s\\S]*?)(?=\\n## v|$)`);
+          const match = changelog.match(pattern);
+          if (!match) {
+            throw new Error(`No CHANGELOG section found for ${tag}`);
+          }
+          fs.writeFileSync('.release-notes.md', match[1].trim() + '\n');
+          NODE
+
+      - run: npm publish --provenance --access public
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: .release-notes.md

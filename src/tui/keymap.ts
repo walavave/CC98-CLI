@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 export type TuiAction =
+  | "search.focus-input"
   | "topic.next-reply"
   | "topic.previous-reply"
   | "topic.like-post"
@@ -23,6 +24,7 @@ export interface TuiKeymap {
 }
 
 const defaultBindings: KeyBinding[] = [
+  { on: [expandKeyToken("f")], run: "search.focus-input" },
   { on: [expandKeyToken("a")], run: "topic.like-post" },
   { on: [expandKeyToken("s")], run: "topic.dislike-post" },
   { on: [expandKeyToken("<A-Down>")], run: "topic.next-reply" },
@@ -31,7 +33,7 @@ const defaultBindings: KeyBinding[] = [
 
 export function loadTuiKeymap(): TuiKeymap {
   const loadedBindings = loadBindingsFromFile(getKeymapFilePath());
-  return createTuiKeymap(loadedBindings.length > 0 ? [...defaultBindings, ...loadedBindings] : defaultBindings);
+  return createTuiKeymap(loadedBindings.length > 0 ? [...loadedBindings, ...defaultBindings] : defaultBindings);
 }
 
 export function getKeymapFilePath(): string {
@@ -227,6 +229,7 @@ function parseTomlString(value: string): string {
 
 function normalizeRunAction(value: string): TuiAction | undefined {
   switch (value) {
+    case "search.focus-input":
     case "topic.next-reply":
     case "topic.previous-reply":
     case "topic.like-post":

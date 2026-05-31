@@ -10,6 +10,7 @@ import {
   settingsItems,
   type ContentItem,
   type ListSnapshot,
+  type SearchListState,
   type TopicLineEntry,
   type TopicPostEntry,
   type TopicReaderState,
@@ -18,6 +19,19 @@ import {
 } from "./tui-model.js";
 import { renderMarkdownToLines, renderUbbToLines } from "./ubb-renderer.js";
 import { CachedCc98Client } from "./cached-client.js";
+
+export function createSearchState(): SearchListState {
+  return {
+    title: "搜索",
+    query: "",
+    draft: "",
+    loaded: 0,
+    size: 10,
+    hasMore: false,
+    searched: false,
+    focus: "input"
+  };
+}
 
 export async function openTopic(
   client: CachedCc98Client,
@@ -186,6 +200,107 @@ export async function loadNextChatPage(
     }
     state.error = error instanceof Error ? error.message : String(error);
     state.status = "更早私信读取失败；n/Space 重试  Esc/Backspace 返回联系人";
+  } finally {
+    state.loadingMore = false;
+    render();
+  }
+}
+
+export async function executeSearch(
+  client: CachedCc98Client,
+  state: TuiState,
+  render: () => void,
+  force = false,
+  signal?: AbortSignal
+): Promise<void> {
+  const search = state.currentSearch;
+  if (!search) {
+    return;
+  }
+
+  const query = search.draft.trim();
+  search.query = query;
+  state.error = undefined;
+  state.itemIndex = 0;
+  state.scroll = 0;
+  state.imageViewer = undefined;
+
+  if (!query) {
+    search.loaded = 0;
+    search.hasMore = false;
+    search.searched = false;
+    search.focus = "input";
+    state.items = [];
+    state.loading = false;
+    state.loadingMore = false;
+    state.status = "搜索：输入关键词后 Enter 执行  j 进入结果  h 返回左栏";
+    render();
+    return;
+  }
+
+  state.loading = true;
+  state.loadingMore = false;
+  state.status = `正在搜索 “${query}”...`;
+  render();
+
+  try {
+    const topics = asArray(await client.searchTopics(query, 0, search.size, force, signal));
+    state.items = topics.map((topic) => topicItem(topic));
+    search.loaded = topics.length;
+    search.hasMore = topics.length === search.size;
+    search.searched = true;
+    search.focus = state.items.length > 0 ? "results" : "input";
+    state.status = state.items.length === 0
+      ? `未找到 “${query}” 的相关帖子`
+      : search.hasMore
+        ? `搜索结果：${state.items.length} 项  j/k 选择  Enter 打开  n/Space 继续加载`
+        : `搜索结果：${state.items.length} 项  j/k 选择  Enter 打开`;
+  } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
+    state.error = error instanceof Error ? error.message : String(error);
+    state.status = "搜索失败；Enter 重试  h 返回左栏";
+  } finally {
+    state.loading = false;
+    render();
+  }
+}
+
+export async function loadNextSearchPage(
+  client: CachedCc98Client,
+  state: TuiState,
+  render: () => void,
+  signal?: AbortSignal
+): Promise<void> {
+  const search = state.currentSearch;
+  if (!search || !search.query || state.loading || state.loadingMore || !search.hasMore) {
+    return;
+  }
+
+  state.loadingMore = true;
+  state.error = undefined;
+  state.status = `正在加载 “${search.query}” 的更多结果...`;
+  render();
+
+  try {
+    const topics = asArray(await client.searchTopics(search.query, search.loaded, search.size, false, signal));
+    const nextItems = topics.map((topic) => topicItem(topic));
+    state.items = [...state.items, ...nextItems];
+    search.loaded += topics.length;
+    search.hasMore = topics.length === search.size;
+    if (state.items.length > 0) {
+      search.focus = "results";
+    }
+    state.status = search.hasMore
+      ? `搜索结果：${state.items.length} 项  j/k 选择  Enter 打开  n/Space 继续加载`
+      : `搜索结果：${state.items.length} 项  已全部加载`;
+  } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
+    state.error = error instanceof Error ? error.message : String(error);
+    state.status = "加载更多搜索结果失败；n/Space 重试";
   } finally {
     state.loadingMore = false;
     render();
@@ -372,6 +487,13 @@ export async function loadView(
         items: topics.map((topic) => topicItem(topic))
       };
     }
+    case "search": {
+      return {
+        title: "搜索",
+        items: [],
+        status: "搜索：按 Enter 进入输入框并搜索主题"
+      };
+    }
     case "boards": {
       const sections = asArray(await client.getAllBoards(force, signal));
       const allBoards = flattenBoards(sections);
@@ -504,6 +626,7 @@ function prepareListView(
   state.imageViewer = undefined;
   state.currentBoard = options.currentBoard;
   state.currentChat = options.currentChat;
+  state.currentSearch = undefined;
   state.viewTitle = options.title;
   state.items = [];
   state.status = options.status;
@@ -519,6 +642,7 @@ function applyListSnapshot(state: TuiState, snapshot: ListSnapshot): void {
   state.imageViewer = undefined;
   state.currentBoard = undefined;
   state.currentChat = undefined;
+  state.currentSearch = undefined;
   state.viewTitle = snapshot.title;
   state.items = snapshot.items;
   state.itemIndex = snapshot.itemIndex;

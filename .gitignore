@@ -1,6 +1,7 @@
 node_modules/
 dist/
 Forum
+ref.md
 .DS_Store
 .env
 .env.*

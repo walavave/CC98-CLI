@@ -212,8 +212,8 @@ export class Cc98Client {
     return this.request<unknown>(endpoint, { signal: options.signal });
   }
 
-  async searchTopics(keyword: string, from = 0, size = 20): Promise<unknown> {
-    return this.request<unknown>(endpoints.topic.search(keyword, from, size));
+  async searchTopics(keyword: string, from = 0, size = 20, options: RequestOptions = {}): Promise<unknown> {
+    return this.request<unknown>(endpoints.topic.search(keyword, from, size), { signal: options.signal });
   }
 
   async getPostReactionState(postId: number): Promise<unknown> {

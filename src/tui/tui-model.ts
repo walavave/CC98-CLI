@@ -4,9 +4,10 @@ import type {
   LoginFormState
 } from "./account-modal.js";
 
-export type ViewId = "hot" | "new" | "boards" | "following" | "favorite" | "messages" | "me" | "settings";
+export type ViewId = "hot" | "new" | "search" | "boards" | "following" | "favorite" | "messages" | "me" | "settings";
 export type FocusColumn = "nav" | "content";
 export type ModalType = "help" | "account" | "login" | "confirm" | "image" | null;
+export type SearchFocus = "input" | "results";
 
 export interface NavItem {
   id: ViewId;
@@ -47,6 +48,7 @@ export interface TuiState {
   parentList?: ListSnapshot;
   currentBoard?: BoardListState;
   currentChat?: ChatListState;
+  currentSearch?: SearchListState;
   topic?: TopicReaderState;
   modal: ModalType;
   accountModal: AccountModalState;
@@ -73,6 +75,17 @@ export interface ChatListState {
   loaded: number;
   size: number;
   hasMore: boolean;
+}
+
+export interface SearchListState {
+  title: string;
+  query: string;
+  draft: string;
+  loaded: number;
+  size: number;
+  hasMore: boolean;
+  searched: boolean;
+  focus: SearchFocus;
 }
 
 export interface TopicReaderState {
@@ -139,6 +152,7 @@ export const navItems: NavItem[] = [
   { id: "hot", label: "十大", hint: "热门话题" },
   { id: "favorite", label: "收藏", hint: "版面帖子" },
   { id: "new", label: "最新", hint: "新帖流" },
+  { id: "search", label: "搜索", hint: "主题检索" },
   { id: "boards", label: "版面", hint: "所有分区" },
   { id: "following", label: "关注", hint: "用户动态" },
   { id: "messages", label: "消息", hint: "未读与私信" },
@@ -189,6 +203,17 @@ export function getStatus(state: TuiState): string {
   }
   if (state.mode === "settings") {
     return "设置";
+  }
+  if (state.currentSearch) {
+    if (!state.currentSearch.searched) {
+      return "搜索：输入关键词后 Enter 执行";
+    }
+    if (state.currentSearch.focus === "input") {
+      return `搜索：${state.currentSearch.query || "未输入关键词"}`;
+    }
+    return state.currentSearch.hasMore
+      ? `${state.items.length} 项，继续向下可加载更多`
+      : `${state.items.length} 项`;
   }
   return `${state.items.length} 项`;
 }

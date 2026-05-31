@@ -85,6 +85,7 @@ j/k 或 ↑/↓        上下移动
 l 或 →            进入下一层
 h 或 ←            返回上一层
 Enter             确认执行
+f                 跳到搜索框
 r                 刷新
 ?                 显示帮助
 n 或 Space        加载更多
@@ -92,7 +93,7 @@ a / s             对当前楼层点赞 / 点踩
 q                 退出
 ```
 
-左栏导航包含：十大、收藏、最新、版面、关注、消息、我的、设置。
+左栏导航包含：十大、收藏、最新、搜索、版面、关注、消息、我的、设置。
 
 ### 配置
 
@@ -111,6 +112,7 @@ preview_images = true
 ```toml
 [tui]
 prepend_keymap = [
+  { on = "F", run = "search.focus-input", desc = "跳到搜索框" },
   { on = "<A-Down>", run = "topic.next-reply", desc = "下一条回复" },
   { on = "<A-Up>", run = "topic.previous-reply", desc = "上一条回复" },
   { on = "A", run = "topic.like-post", desc = "点赞当前楼层" },
@@ -118,7 +120,7 @@ prepend_keymap = [
 ]
 ```
 
-默认已内置 `a` / `s` 用于在主题阅读模式下对当前楼层点赞、点踩，`<A-Down>` / `<A-Up>` 用于跳转相邻回复。
+默认已内置 `f` 用于跳到搜索界面的搜索框，`a` / `s` 用于在主题阅读模式下对当前楼层点赞、点踩，`<A-Down>` / `<A-Up>` 用于跳转相邻回复。`prepend_keymap` 中的自定义绑定会优先于内置默认值。
 
 ## CLI
 
