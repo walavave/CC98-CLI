@@ -8,6 +8,7 @@ export const theme = {
     primaryBg: bg(0, 104, 176),
     panelBg: bg(5, 46, 74),
     selectedBg: bg(181, 196, 255),
+    emotionSelectedBorder: fg(91, 207, 140),
     textOnPrimary: fg(245, 250, 255),
     muted: fg(139, 152, 166),
     rule: fg(181, 196, 255),

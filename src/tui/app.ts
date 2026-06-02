@@ -54,7 +54,8 @@ export async function runTui(): Promise<void> {
       selectedIndex: 0
     },
     loginForm: createLoginForm(),
-    imageViewer: undefined
+    imageViewer: undefined,
+    composeDialog: undefined
   };
 
   terminal.enter();

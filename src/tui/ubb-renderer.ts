@@ -153,7 +153,7 @@ function replaceInlineEmotionTags(value: string, images: string[], previewRows =
 function resolveEmotionImagePath(tag: string): string | undefined {
   if (/^ac(\d{2}|\d{4})$/i.test(tag)) {
     const id = tag.slice(2);
-    return join(forumImageRoot, "ac", `${id}.png`);
+    return join(forumImageRoot, "ac-dark", `${id}.png`);
   }
   if (/^cc98\d{2}$/i.test(tag)) {
     const id = tag.slice(4);

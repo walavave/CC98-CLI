@@ -57,6 +57,7 @@ export const endpoints = {
   },
   post: {
     reactionState: (postId: number) => `${base}/post/${postId}/like`,
+    topicReply: (topicId: number) => `${base}/topic/${topicId}/post`,
     rateReasons: (type: number) => `${base}/post/rating-reason?type=${type}`
   },
   write: {

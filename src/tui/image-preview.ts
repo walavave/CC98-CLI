@@ -166,7 +166,8 @@ async function ensureRenderableImage(path: string): Promise<string> {
     return pngPath;
   } catch {
     await mkdir(join(tmpdir(), "cc98-cli-images"), { recursive: true, mode: 0o700 });
-    await execFileAsync("/opt/homebrew/bin/magick", [path, "-auto-orient", pngPath]);
+    const source = extension === ".gif" ? `${path}[0]` : path;
+    await execFileAsync("/opt/homebrew/bin/magick", [source, "-auto-orient", pngPath]);
     return pngPath;
   }
 }

@@ -14,6 +14,8 @@ export interface AccountConfig {
 export interface TuiConfig {
   hideTopChrome: boolean;
   previewImages: boolean;
+  composeKey: string;
+  postSignature: string;
 }
 
 const defaultConfig: AppConfig = {
@@ -22,7 +24,9 @@ const defaultConfig: AppConfig = {
   },
   tui: {
     hideTopChrome: false,
-    previewImages: true
+    previewImages: true,
+    composeKey: "c",
+    postSignature: "[right][color=#808080]——来自终端应用[/color]「[b][url=https://github.com/walavave/CC98-CLI]CC98 CLI[/url][/b]」[/right]"
   }
 };
 
@@ -53,13 +57,23 @@ function mergeConfig(base: AppConfig, parsed: Record<string, Record<string, unkn
     },
     tui: {
       hideTopChrome: booleanValue(tui.hide_top_chrome, base.tui.hideTopChrome),
-      previewImages: booleanValue(tui.preview_images, base.tui.previewImages)
+      previewImages: booleanValue(tui.preview_images, base.tui.previewImages),
+      composeKey: singleKeyValue(tui.compose_key, base.tui.composeKey),
+      postSignature: stringValue(tui.post_signature, base.tui.postSignature)
     }
   };
 }
 
 function booleanValue(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
+}
+
+function singleKeyValue(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.length === 1 ? value : fallback;
+}
+
+function stringValue(value: unknown, fallback: string): string {
+  return typeof value === "string" ? value : fallback;
 }
 
 function parseTomlSubset(input: string): Record<string, Record<string, unknown>> {
@@ -77,15 +91,27 @@ function parseTomlSubset(input: string): Record<string, Record<string, unknown>>
       result[section] ??= {};
       continue;
     }
-    const keyMatch = /^([A-Za-z0-9_-]+)\s*=\s*(true|false)$/i.exec(line);
+    const keyMatch = /^([A-Za-z0-9_-]+)\s*=\s*(true|false|"(?:[^"\\]|\\.)*")$/i.exec(line);
     if (!keyMatch || !section) {
       continue;
     }
     result[section] ??= {};
-    result[section][keyMatch[1] ?? ""] = (keyMatch[2] ?? "").toLowerCase() === "true";
+    const rawValue = keyMatch[2] ?? "";
+    result[section][keyMatch[1] ?? ""] = rawValue.startsWith("\"")
+      ? parseTomlString(rawValue)
+      : rawValue.toLowerCase() === "true";
   }
 
   return result;
+}
+
+function parseTomlString(value: string): string {
+  return value.slice(1, -1)
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\"/g, "\"")
+    .replace(/\\\\/g, "\\");
 }
 
 function stripComment(line: string): string {

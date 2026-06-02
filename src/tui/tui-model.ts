@@ -6,7 +6,7 @@ import type {
 
 export type ViewId = "hot" | "new" | "search" | "boards" | "following" | "favorite" | "messages" | "me" | "settings";
 export type FocusColumn = "nav" | "content";
-export type ModalType = "help" | "account" | "login" | "confirm" | "image" | null;
+export type ModalType = "help" | "account" | "login" | "confirm" | "image" | "compose" | "emotion-picker" | null;
 export type SearchFocus = "input" | "results";
 
 export interface NavItem {
@@ -55,6 +55,7 @@ export interface TuiState {
   loginForm: LoginFormState;
   confirmDialog?: ConfirmDialogState;
   imageViewer?: ImageViewerState;
+  composeDialog?: ComposeDialogState;
 }
 
 export interface ListSnapshot {
@@ -112,6 +113,16 @@ export interface ImageViewerState {
   };
   loading: boolean;
   error?: string;
+}
+
+export interface ComposeDialogState {
+  draft: string;
+  cursorIndex: number;
+  preferredColumn?: number;
+  submitting: boolean;
+  emotionCategoryIndex: number;
+  emotionSelectedIndex: number;
+  emotionFocus: "sidebar" | "grid";
 }
 
 export interface TopicPostEntry {

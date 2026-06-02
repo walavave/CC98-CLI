@@ -115,6 +115,10 @@ export class CachedCc98Client {
     return result;
   }
 
+  replyTopic(topicId: number, content: string, parentId?: number): Promise<unknown> {
+    return this.client.replyTopic(topicId, content, parentId);
+  }
+
   /**
    * Clear all caches (memory + file)
    */

@@ -5,11 +5,12 @@ import {
 } from "./account-modal.js";
 import type { TuiConfig } from "../config.js";
 import { Canvas } from "./canvas.js";
+import { emotionCategories, getEmotionPreview, getEmotionCategory } from "./emotion-catalog.js";
 import { imagePreviewRows } from "./image-preview.js";
 import { center, fill, length, pad, rect, split } from "./layout.js";
 import type { TerminalFrame, TerminalImageOverlay } from "./terminal.js";
-import { blank, cellWidth, fit, truncate } from "./text.js";
-import { ruleLine, selectedLine, textStyle, theme } from "./theme.js";
+import { blank, cellWidth, fit, graphemes, truncate } from "./text.js";
+import { ruleLine, selectedLine, styled, textStyle, theme } from "./theme.js";
 import {
   currentTopicLine,
   getStatus,
@@ -114,6 +115,12 @@ export function draw(state: TuiState, size: { columns: number; rows: number }, c
   }
   if (state.modal === "image" && state.imageViewer) {
     return drawImageModal(baseLines, state, width, height);
+  }
+  if (state.modal === "compose" && state.composeDialog) {
+    return { text: drawComposeModal(baseLines, state, width, height) };
+  }
+  if (state.modal === "emotion-picker" && state.composeDialog) {
+    return drawEmotionPickerModal(baseLines, state, width, height);
   }
 
   return { text: canvas.toString(), imageOverlays };
@@ -418,7 +425,7 @@ function getKeyHints(state: TuiState): string {
     hints.push("n 更多");
   }
   if (state.mode === "topic") {
-    hints.push("a 赞", "s 踩");
+    hints.push("c 评论", "a 赞", "s 踩");
   }
   hints.push("f 搜索", "r 刷新", "? 帮助", "q 退出");
   return hints.join(" ");
@@ -440,6 +447,7 @@ function drawHelpModal(baseLines: string[], width: number, height: number): stri
     "   f           跳到搜索框",
     "   r           刷新当前视图",
     "   n           加载更多",
+    "   c           打开评论框",
     "   a / s       对当前楼层点赞 / 点踩",
     "   Space       帖子内看图",
     "   ←/→         预览切图",
@@ -494,4 +502,242 @@ function drawImageModal(baseLines: string[], state: TuiState, width: number, hei
       }]
       : []
   };
+}
+
+function drawComposeModal(baseLines: string[], state: TuiState, width: number, height: number): string {
+  const compose = state.composeDialog;
+  if (!compose) {
+    return baseLines.join("\n");
+  }
+
+  const canvas = new Canvas(width, height);
+  canvas.drawLines(rect(width, height), baseLines);
+
+  const modalWidth = Math.min(Math.max(1, width - 2), Math.max(36, Math.floor(width * 0.72)));
+  const modalHeight = Math.min(Math.max(1, height - 2), Math.max(10, Math.min(height - 6, 14)));
+  const area = center(rect(width, height), modalWidth, modalHeight);
+  const innerWidth = Math.max(1, area.width - 2);
+  const draftHeight = Math.max(3, area.height - 5);
+  const contentWidth = Math.max(1, innerWidth - 1);
+  const draftView = buildComposeDraftView(compose.draft, compose.cursorIndex, contentWidth, draftHeight);
+  const rows = [
+    fit(
+      `${textStyle.primaryBold(" 发表评论")}${textStyle.muted(` ${compose.submitting ? "正在发送..." : "Enter 发送  表情快捷键打开表情  Esc 取消"}`)}`,
+      innerWidth
+    ),
+    ruleLine(Math.max(0, innerWidth))
+  ];
+
+  for (let index = 0; index < draftHeight; index += 1) {
+    const line = draftView.lines[index] ?? "";
+    if (line) {
+      rows.push(fit(` ${line}`, innerWidth));
+    } else if (compose.draft.length === 0 && index === 0) {
+      rows.push(textStyle.muted(fit(" 输入评论内容", innerWidth)));
+    } else {
+      rows.push(" ".repeat(innerWidth));
+    }
+  }
+
+  canvas.overlay(area, rows, { fill: theme.color.panelBg });
+  return canvas.toString();
+}
+
+function buildComposeDraftView(
+  draft: string,
+  cursorIndex: number,
+  width: number,
+  viewportHeight: number
+): { lines: string[] } {
+  const logicalLines = draft.length > 0 ? draft.split("\n") : [""];
+  const visualLines: string[] = [];
+  let offset = 0;
+  let cursorRow = 0;
+
+  logicalLines.forEach((logicalLine, logicalIndex) => {
+    const units = graphemes(logicalLine);
+    const wrapped = wrapComposeLine(units, width);
+    wrapped.forEach((segment, segmentIndex) => {
+      const segmentStart = wrapped.slice(0, segmentIndex).reduce((total, entry) => total + entry.length, 0);
+      const segmentEnd = segmentStart + segment.length;
+      if (cursorIndex >= offset + segmentStart && cursorIndex <= offset + segmentEnd) {
+        cursorRow = visualLines.length;
+      }
+      visualLines.push(renderComposeCursor(segment, cursorIndex - offset - segmentStart));
+    });
+
+    offset += units.length;
+    if (logicalIndex < logicalLines.length - 1) {
+      if (cursorIndex === offset) {
+        cursorRow = visualLines.length;
+      }
+      offset += 1;
+    }
+  });
+
+  if (visualLines.length === 0) {
+    visualLines.push(renderComposeCursor([], 0));
+    cursorRow = 0;
+  } else if (cursorIndex === graphemes(draft).length && draft.endsWith("\n")) {
+    cursorRow = visualLines.length;
+    visualLines.push(renderComposeCursor([], 0));
+  }
+
+  const start = Math.max(0, Math.min(cursorRow, Math.max(0, visualLines.length - viewportHeight)));
+  const lines = visualLines.slice(start, start + viewportHeight);
+  while (lines.length < viewportHeight) {
+    lines.push("");
+  }
+  return { lines };
+}
+
+function wrapComposeLine(units: string[], width: number): string[][] {
+  if (units.length === 0) {
+    return [[]];
+  }
+
+  const lines: string[][] = [];
+  let current: string[] = [];
+  let currentWidth = 0;
+  for (const unit of units) {
+    const unitWidth = cellWidth(unit);
+    if (currentWidth + unitWidth > width && current.length > 0) {
+      lines.push(current);
+      current = [unit];
+      currentWidth = unitWidth;
+    } else {
+      current.push(unit);
+      currentWidth += unitWidth;
+    }
+  }
+  lines.push(current);
+  return lines;
+}
+
+function renderComposeCursor(units: string[], cursorColumn: number): string {
+  const safeIndex = Math.max(0, Math.min(units.length, cursorColumn));
+  const cursorStyle = `${theme.color.emotionSelectedBorder}`;
+  const cursorGlyph = styled("|", cursorStyle);
+  if (safeIndex === units.length) {
+    return `${units.join("")}${cursorGlyph}`;
+  }
+  return `${units.slice(0, safeIndex).join("")}${cursorGlyph}${units.slice(safeIndex).join("")}`;
+}
+
+function drawEmotionPickerModal(baseLines: string[], state: TuiState, width: number, height: number): TerminalFrame {
+  const compose = state.composeDialog;
+  if (!compose) {
+    return { text: baseLines.join("\n") };
+  }
+
+  const composeLayer = drawComposeModal(baseLines, state, width, height).split("\n");
+  const canvas = new Canvas(width, height);
+  canvas.drawLines(rect(width, height), composeLayer);
+
+  const modalWidth = Math.min(Math.max(1, width - 2), Math.max(56, Math.floor(width * 0.78)));
+  const modalHeight = Math.min(Math.max(1, height - 2), Math.max(18, Math.floor(height * 0.72)));
+  const area = center(rect(width, height), modalWidth, modalHeight);
+  canvas.overlay(area, [], { fill: theme.color.panelBg });
+
+  const inner = pad(area, 1);
+  const cellWidthValue = 11;
+  const cellHeight = 5;
+  const sidebarWidth = Math.max(8, Math.min(12, Math.floor(inner.width * 0.2)));
+  const gridArea = {
+    x: inner.x + sidebarWidth + 1,
+    y: inner.y,
+    width: Math.max(1, inner.width - sidebarWidth - 1),
+    height: inner.height
+  };
+  const columns = Math.max(1, Math.floor(gridArea.width / cellWidthValue));
+  const previewColumns = Math.max(1, cellWidthValue - 2);
+  const sidebarArea = {
+    x: inner.x,
+    y: inner.y,
+    width: sidebarWidth,
+    height: inner.height
+  };
+  const category = getEmotionCategory(compose.emotionCategoryIndex);
+  const pageRows = Math.max(1, Math.floor(Math.max(1, gridArea.height - 1) / cellHeight));
+  const pageSize = columns * pageRows;
+  const start = Math.max(0, Math.floor(compose.emotionSelectedIndex / pageSize) * pageSize);
+  const visible = category.entries.slice(start, start + pageSize);
+  const imageOverlays: TerminalImageOverlay[] = [];
+
+  const sidebarRows = emotionCategories.map((item, index) => {
+    const selected = index === compose.emotionCategoryIndex;
+    const row = fit(` ${item.label}`, sidebarArea.width);
+    if (selected) {
+      return selectedLine(row, sidebarArea.width, true);
+    }
+    return textStyle.muted(row);
+  });
+  canvas.drawLines(sidebarArea, sidebarRows.concat(blank(Math.max(0, sidebarArea.height - sidebarRows.length), sidebarArea.width)));
+  canvas.verticalRule({ x: inner.x + sidebarWidth, y: inner.y, width: 1, height: inner.height });
+
+  const title = fit(textStyle.primaryBold(` ${category.label} · ${visible.length}/${category.entries.length}`), gridArea.width);
+  canvas.drawLines({ x: gridArea.x, y: gridArea.y, width: gridArea.width, height: 1 }, [title]);
+
+  visible.forEach((entry, index) => {
+    const localIndex = start + index;
+    const col = index % columns;
+    const row = Math.floor(index / columns);
+    const x = gridArea.x + col * cellWidthValue;
+    const y = gridArea.y + 1 + row * cellHeight;
+    if (x + cellWidthValue > gridArea.x + gridArea.width || y + cellHeight > gridArea.y + gridArea.height) {
+      return;
+    }
+
+    const selected = localIndex === compose.emotionSelectedIndex;
+    const borderStyle = selected ? theme.color.emotionSelectedBorder : theme.color.muted;
+    const box = { x, y, width: cellWidthValue, height: cellHeight };
+    canvas.frame(box);
+
+    const preview = getEmotionPreview(entry, previewColumns);
+    if (preview) {
+      imageOverlays.push({
+        row: y + 2,
+        column: x + 2,
+        token: preview.token
+      });
+    } else {
+      canvas.drawLines(
+        { x: x + 1, y: y + 1, width: cellWidthValue - 2, height: 2 },
+        [
+          fit(selected ? textStyle.primarySoft(" 预览中") : textStyle.muted(" 预览中"), cellWidthValue - 2),
+          " ".repeat(cellWidthValue - 2)
+        ]
+      );
+    }
+
+    if (selected) {
+      tintBox(canvas, box, theme.color.emotionSelectedBorder);
+    } else {
+      tintBox(canvas, box, borderStyle);
+    }
+  });
+
+  return {
+    text: canvas.toString(),
+    imageOverlays
+  };
+}
+
+function tintBox(canvas: Canvas, area: { x: number; y: number; width: number; height: number }, style: string): void {
+  canvas.drawLines(
+    { x: area.x, y: area.y, width: area.width, height: 1 },
+    [textStyleWithStyle(`${theme.border.topLeft}${theme.border.horizontal.repeat(Math.max(0, area.width - 2))}${theme.border.topRight}`, style)]
+  );
+  for (let row = 1; row < area.height - 1; row += 1) {
+    canvas.drawLines({ x: area.x, y: area.y + row, width: 1, height: 1 }, [textStyleWithStyle(theme.border.vertical, style)]);
+    canvas.drawLines({ x: area.x + area.width - 1, y: area.y + row, width: 1, height: 1 }, [textStyleWithStyle(theme.border.vertical, style)]);
+  }
+  canvas.drawLines(
+    { x: area.x, y: area.y + area.height - 1, width: area.width, height: 1 },
+    [textStyleWithStyle(`${theme.border.bottomLeft}${theme.border.horizontal.repeat(Math.max(0, area.width - 2))}${theme.border.bottomRight}`, style)]
+  );
+}
+
+function textStyleWithStyle(content: string, style: string): string {
+  return `${style}${content}\x1b[0m`;
 }

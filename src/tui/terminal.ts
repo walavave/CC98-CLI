@@ -33,6 +33,7 @@ export class Terminal {
   private previousPaused = true;
   private previousHadImageOverlays = false;
   private inputBuffer = "";
+  private pendingEscapeTimeout: ReturnType<typeof setTimeout> | undefined;
   private readonly keyHandlers = new Set<KeyHandler>();
   private readonly mouseHandlers = new Set<MouseHandler>();
   private readonly resizeHandlers = new Set<ResizeHandler>();
@@ -53,6 +54,10 @@ export class Terminal {
   exit(): void {
     stdin.off("data", this.handleData);
     stdout.off("resize", this.handleResize);
+    if (this.pendingEscapeTimeout) {
+      clearTimeout(this.pendingEscapeTimeout);
+      this.pendingEscapeTimeout = undefined;
+    }
     stdout.write(`${ansi.disableMouse}${ansi.reset}${ansi.clear}${ansi.home}${ansi.showCursor}${ansi.exitAltScreen}`);
     if (stdin.isTTY) {
       stdin.setRawMode(this.previousRawMode);
@@ -105,6 +110,10 @@ export class Terminal {
   }
 
   private readonly handleData = (chunk: Buffer | string): void => {
+    if (this.pendingEscapeTimeout) {
+      clearTimeout(this.pendingEscapeTimeout);
+      this.pendingEscapeTimeout = undefined;
+    }
     this.inputBuffer += chunk.toString("utf8");
 
     while (this.inputBuffer.length > 0) {
@@ -117,6 +126,7 @@ export class Terminal {
         continue;
       }
       if (mouseSequence) {
+        this.scheduleBufferedInputFlush();
         return;
       }
 
@@ -129,6 +139,7 @@ export class Terminal {
         continue;
       }
       if (escapeSequence) {
+        this.scheduleBufferedInputFlush();
         return;
       }
 
@@ -143,6 +154,35 @@ export class Terminal {
   private readonly handleResize = (): void => {
     for (const handler of this.resizeHandlers) {
       handler();
+    }
+  };
+
+  private readonly scheduleBufferedInputFlush = (): void => {
+    if (this.pendingEscapeTimeout) {
+      clearTimeout(this.pendingEscapeTimeout);
+    }
+    this.pendingEscapeTimeout = setTimeout(() => {
+      this.pendingEscapeTimeout = undefined;
+      this.flushBufferedInput();
+    }, 25);
+  };
+
+  private readonly flushBufferedInput = (): void => {
+    if (!this.inputBuffer) {
+      return;
+    }
+    if (this.inputBuffer === "\x1b") {
+      this.inputBuffer = "";
+      for (const handler of this.keyHandlers) {
+        handler("\x1b");
+      }
+      return;
+    }
+
+    const fallback = this.inputBuffer;
+    this.inputBuffer = "";
+    for (const handler of this.keyHandlers) {
+      handler(fallback);
     }
   };
 }

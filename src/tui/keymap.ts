@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 export type TuiAction =
   | "search.focus-input"
+  | "compose.open-emotion"
   | "topic.next-reply"
   | "topic.previous-reply"
   | "topic.like-post"
@@ -25,6 +26,7 @@ export interface TuiKeymap {
 
 const defaultBindings: KeyBinding[] = [
   { on: [expandKeyToken("f")], run: "search.focus-input" },
+  { on: [expandKeyToken("<C-a>")], run: "compose.open-emotion" },
   { on: [expandKeyToken("a")], run: "topic.like-post" },
   { on: [expandKeyToken("s")], run: "topic.dislike-post" },
   { on: [expandKeyToken("<A-Down>")], run: "topic.next-reply" },
@@ -230,6 +232,7 @@ function parseTomlString(value: string): string {
 function normalizeRunAction(value: string): TuiAction | undefined {
   switch (value) {
     case "search.focus-input":
+    case "compose.open-emotion":
     case "topic.next-reply":
     case "topic.previous-reply":
     case "topic.like-post":

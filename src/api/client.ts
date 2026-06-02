@@ -230,6 +230,24 @@ export class Cc98Client {
     });
   }
 
+  async replyTopic(topicId: number, content: string, parentId?: number): Promise<unknown> {
+    return this.request<unknown>(endpoints.post.topicReply(topicId), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        content,
+        contentType: 0,
+        title: "",
+        ...(parentId !== undefined ? { parentId } : {}),
+        isAnonymous: false,
+        notifyAllReplier: false,
+        clientType: 1
+      })
+    });
+  }
+
   async getPostRateReasons(type: number): Promise<unknown> {
     return this.request<unknown>(endpoints.post.rateReasons(type));
   }
