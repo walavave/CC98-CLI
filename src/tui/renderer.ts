@@ -15,6 +15,7 @@ import {
   currentTopicLine,
   getStatus,
   navItems,
+  type ContentItem,
   type TuiState
 } from "./tui-model.js";
 
@@ -196,29 +197,31 @@ function drawMain(state: TuiState, width: number, height: number): TopicDrawResu
   rows.push(textStyle.primaryBold(` ${state.viewTitle}`));
   rows.push(ruleLine(Math.max(0, width - 1)));
 
-  const itemHeight = 2;
-  const visibleCapacity = Math.max(1, Math.floor(Math.max(1, height - 2) / itemHeight));
-  const scroll = getListScroll(state, visibleCapacity);
-  const visible = state.items.slice(scroll, scroll + visibleCapacity);
-  visible.forEach((itemValue, offset) => {
+  const contentHeight = Math.max(1, height - 2);
+  const scroll = getListScroll(state, contentHeight);
+  const visible = getVisibleItems(state.items, scroll, contentHeight);
+  visible.forEach(({ item: itemValue, index }) => {
+    const itemHeight = getListItemHeight(itemValue);
     if (rows.length + itemHeight > height) {
       return;
     }
-    const index = scroll + offset;
     const active = index === state.itemIndex && (state.focus === "content" || state.mode === "settings");
     const marker = active ? theme.marker.selected : theme.marker.normal;
     const title = fit(` ${marker} ${listItemTitle(itemValue)}`, width);
     rows.push(active ? selectedLine(title, width, state.focus === "content" || state.mode === "settings") : textStyle.muted(title));
 
-    rows.push(itemValue.meta ? fit(textStyle.muted(`  ${itemValue.meta}`), width) : " ".repeat(width));
+    if (itemValue.meta) {
+      rows.push(fit(textStyle.muted(`  ${itemValue.meta}`), width));
+    }
   });
 
   if (visible.length === 0) {
     rows.push(textStyle.muted(" 暂无数据"));
   }
 
-  if (scroll + visibleCapacity < state.items.length && rows.length < height) {
-    rows.push(fit(textStyle.muted(`  ↓ 还有 ${state.items.length - scroll - visibleCapacity} 项`), width));
+  const lastVisibleIndex = visible.at(-1)?.index ?? scroll - 1;
+  if (lastVisibleIndex < state.items.length - 1 && rows.length < height) {
+    rows.push(fit(textStyle.muted(`  ↓ 还有 ${state.items.length - lastVisibleIndex - 1} 项`), width));
   }
 
   return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
@@ -234,14 +237,65 @@ function listItemTitle(itemValue: { title: string; detail?: string }): string {
   return `${itemValue.title}  ${truncate(itemValue.detail, 80)}`;
 }
 
-function getListScroll(state: TuiState, visibleCapacity: number): number {
-  const maxScroll = Math.max(0, state.items.length - visibleCapacity);
+function getListItemHeight(itemValue: { meta?: string }): number {
+  return itemValue.meta ? 2 : 1;
+}
+
+function getVisibleItems(
+  items: ContentItem[],
+  scroll: number,
+  availableRows: number
+): Array<{ item: ContentItem; index: number }> {
+  const visible: Array<{ item: ContentItem; index: number }> = [];
+  let usedRows = 0;
+
+  for (let index = scroll; index < items.length; index += 1) {
+    const item = items[index];
+    const itemHeight = getListItemHeight(item);
+    if (usedRows + itemHeight > availableRows) {
+      break;
+    }
+    visible.push({ item, index });
+    usedRows += itemHeight;
+  }
+
+  return visible;
+}
+
+function isListItemVisible(
+  items: ContentItem[],
+  scroll: number,
+  itemIndex: number,
+  availableRows: number
+): boolean {
+  if (itemIndex < scroll) {
+    return false;
+  }
+
+  let usedRows = 0;
+  for (let index = scroll; index <= itemIndex && index < items.length; index += 1) {
+    usedRows += getListItemHeight(items[index]);
+    if (usedRows > availableRows) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function getListScroll(state: TuiState, availableRows: number): number {
+  const maxScroll = Math.max(0, state.items.length - 1);
   const current = Math.min(Math.max(0, state.scroll), maxScroll);
   if (state.itemIndex < current) {
     return state.itemIndex;
   }
-  if (state.itemIndex >= current + visibleCapacity) {
-    return Math.min(maxScroll, state.itemIndex - visibleCapacity + 1);
+
+  if (!isListItemVisible(state.items, current, state.itemIndex, availableRows)) {
+    let next = current;
+    while (next < state.itemIndex && !isListItemVisible(state.items, next, state.itemIndex, availableRows)) {
+      next += 1;
+    }
+    return next;
   }
   return current;
 }
@@ -273,30 +327,32 @@ function drawSearch(state: TuiState, width: number, height: number): TopicDrawRe
     return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
   }
 
-  const itemHeight = 2;
-  const visibleCapacity = Math.max(1, Math.floor(Math.max(1, height - 3) / itemHeight));
-  const scroll = getListScroll(state, visibleCapacity);
-  const visible = state.items.slice(scroll, scroll + visibleCapacity);
+  const contentHeight = Math.max(1, height - 3);
+  const scroll = getListScroll(state, contentHeight);
+  const visible = getVisibleItems(state.items, scroll, contentHeight);
 
   if (visible.length === 0) {
     rows.push(textStyle.muted(search.searched ? " 暂无搜索结果" : " 在输入框中输入关键词并按 Enter"));
     return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
   }
 
-  visible.forEach((itemValue, offset) => {
+  visible.forEach(({ item: itemValue, index }) => {
+    const itemHeight = getListItemHeight(itemValue);
     if (rows.length + itemHeight > height) {
       return;
     }
-    const index = scroll + offset;
     const active = index === state.itemIndex && state.focus === "content" && search.focus === "results";
     const marker = active ? theme.marker.selected : theme.marker.normal;
     const title = fit(` ${marker} ${listItemTitle(itemValue)}`, width);
     rows.push(active ? selectedLine(title, width, true) : textStyle.muted(title));
-    rows.push(itemValue.meta ? fit(textStyle.muted(`  ${itemValue.meta}`), width) : " ".repeat(width));
+    if (itemValue.meta) {
+      rows.push(fit(textStyle.muted(`  ${itemValue.meta}`), width));
+    }
   });
 
-  if (scroll + visibleCapacity < state.items.length && rows.length < height) {
-    rows.push(fit(textStyle.muted(`  ↓ 还有 ${state.items.length - scroll - visibleCapacity} 项`), width));
+  const lastVisibleIndex = visible.at(-1)?.index ?? scroll - 1;
+  if (lastVisibleIndex < state.items.length - 1 && rows.length < height) {
+    rows.push(fit(textStyle.muted(`  ↓ 还有 ${state.items.length - lastVisibleIndex - 1} 项`), width));
   } else if (search.hasMore && rows.length < height) {
     rows.push(fit(textStyle.muted("  ↓ 到底自动继续加载，或按 n/Space"), width));
   }
@@ -335,12 +391,12 @@ function drawTopic(state: TuiState, width: number, height: number): TopicDrawRes
 
   const viewport = Math.max(0, height - rows.length - 1);
   const maxScroll = Math.max(0, topic.lines.length - viewport);
-  state.scroll = Math.min(state.scroll, maxScroll);
-  const body = topic.lines.slice(state.scroll, state.scroll + viewport);
+  const visibleScroll = Math.min(state.scroll, maxScroll);
+  const body = topic.lines.slice(visibleScroll, visibleScroll + viewport);
 
   for (let index = 0; index < body.length; index += 1) {
     const bodyLine = body[index] ?? "";
-    const lineEntry = currentTopicLine(topic, state.scroll + index);
+    const lineEntry = currentTopicLine(topic, visibleScroll + index);
     const imagePreview = lineEntry?.imagePreview;
     const previewHeight = Math.max(1, lineEntry?.imagePreviewRows ?? imagePreviewRows);
     const placeholderHeight = Math.max(1, lineEntry?.imageBlockRows ?? imagePlaceholderHeight(body, index));
@@ -420,12 +476,15 @@ function isNotificationStatus(status: string): boolean {
 }
 
 function getKeyHints(state: TuiState): string {
-  const hints = ["j/k ↑↓ 移动", "h← 返回", "l→ 进入", "Enter 确认"];
+  const hints = ["j/k 楼层", "↑↓ 逐行", "h← 返回", "l→ 进入", "Enter 确认"];
   if (state.currentChat) {
     hints.push("n 更多");
   }
+  if (state.currentUser) {
+    hints.push("n 更多");
+  }
   if (state.mode === "topic") {
-    hints.push("c 评论", "a 赞", "s 踩");
+    hints.push("c 评论", "a 赞", "s 踩", "u 用户页");
   }
   hints.push("f 搜索", "r 刷新", "? 帮助", "q 退出");
   return hints.join(" ");
@@ -438,7 +497,8 @@ function drawHelpModal(baseLines: string[], width: number, height: number): stri
     textStyle.primaryBold(" 快捷键帮助"),
     "",
     " 导航",
-    "   j/k, ↑/↓    上下移动",
+    "   j/k         按楼层上下跳转",
+    "   ↑/↓         按行上下滚动",
     "   l, →        进入下一层",
     "   h, ←        返回上一层",
     "   Enter       确认/执行",
@@ -449,6 +509,7 @@ function drawHelpModal(baseLines: string[], width: number, height: number): stri
     "   n           加载更多",
     "   c           打开评论框",
     "   a / s       对当前楼层点赞 / 点踩",
+    "   u           打开当前楼层作者的用户页",
     "   Space       帖子内看图",
     "   ←/→         预览切图",
     "   ?           显示/关闭帮助",

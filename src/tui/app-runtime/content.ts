@@ -1,4 +1,4 @@
-import { executeSearch, loadNextChatPage, loadNextSearchPage, openBoard, openChat, openTopic } from "../app-data.js";
+import { executeSearch, loadNextChatPage, loadNextSearchPage, loadNextUserTopicPage, openBoard, openChat, openTopic, openUserProfile } from "../app-data.js";
 import { isPrintableInput } from "../account-modal.js";
 import { getStatus, navItems, settingsItems } from "../tui-model.js";
 import type { RuntimeContext } from "./context.js";
@@ -144,6 +144,10 @@ export function handleContentFocus(context: RuntimeContext, key: string): void {
     void loadNextChatPage(client, state, render, nextSignal());
     return;
   }
+  if ((key === "n" || key === " ") && state.currentUser) {
+    void loadNextUserTopicPage(client, state, render, nextSignal());
+    return;
+  }
   if (key === "r") {
     if (state.currentBoard) {
       void openBoard(client, state, state.currentBoard.boardId, state.currentBoard.title, render, true, nextSignal(), false);
@@ -151,6 +155,10 @@ export function handleContentFocus(context: RuntimeContext, key: string): void {
     }
     if (state.currentChat) {
       void openChat(client, state, state.currentChat.userId, state.currentChat.title, render, true, nextSignal(), false);
+      return;
+    }
+    if (state.currentUser) {
+      void openUserProfile(client, state, state.currentUser.userId, render, true, nextSignal(), false);
       return;
     }
     void load(true);
@@ -283,6 +291,10 @@ function openSelectedItem(context: RuntimeContext): boolean {
   }
   if (selected?.chatUserId !== undefined) {
     void openChat(client, state, selected.chatUserId, selected.title, render, false, nextSignal());
+    return true;
+  }
+  if (selected?.userId !== undefined) {
+    void openUserProfile(client, state, selected.userId, render, false, nextSignal());
     return true;
   }
   return false;

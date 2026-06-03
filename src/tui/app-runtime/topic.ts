@@ -1,5 +1,5 @@
 import type { TuiConfig } from "../../config.js";
-import { jumpRelativeTopicFloor, jumpToTopicFloor, loadNextTopicPage, openTopic } from "../app-data.js";
+import { jumpRelativeTopicFloor, jumpToTopicFloor, loadNextTopicPage, openTopic, openUserProfile } from "../app-data.js";
 import { currentTopicPost, getStatus, type TuiState } from "../tui-model.js";
 import type { RuntimeContext } from "./context.js";
 import { openTopicImageViewer, stepTopicImageViewer } from "./image-viewer.js";
@@ -68,6 +68,10 @@ export function handleTopicMode(context: RuntimeContext, key: string, keyAction:
     void reactToCurrentTopicPost(context, false);
     return;
   }
+  if (key === "u") {
+    void openCurrentPostUserProfile(context);
+    return;
+  }
   if (key === "h" || key === "\x1b[D") {
     abortCurrent();
     leaveTopicMode(state);
@@ -80,10 +84,9 @@ export function handleTopicMode(context: RuntimeContext, key: string, keyAction:
     render();
     return;
   }
-  if (key === "j" || key === "\x1b[B") {
-    const maxScroll = Math.max(0, (state.topic?.lines.length ?? 0) - 1);
+  if (key === "j") {
     const wasAtEnd = isAtTopicEnd(state, config, context.getSize().rows);
-    state.scroll = Math.min(maxScroll, state.scroll + 1);
+    jumpRelativeTopicFloor(state, 1);
     state.status = getStatus(state);
     render();
     if (wasAtEnd && state.topic?.hasMore && !state.loadingMore) {
@@ -91,7 +94,20 @@ export function handleTopicMode(context: RuntimeContext, key: string, keyAction:
     }
     return;
   }
-  if (key === "k" || key === "\x1b[A") {
+  if (key === "k") {
+    jumpRelativeTopicFloor(state, -1);
+    state.status = getStatus(state);
+    render();
+    return;
+  }
+  if (key === "\x1b[B") {
+    const maxScroll = Math.max(0, (state.topic?.lines.length ?? 0) - 1);
+    state.scroll = Math.min(maxScroll, state.scroll + 1);
+    state.status = getStatus(state);
+    render();
+    return;
+  }
+  if (key === "\x1b[A") {
     state.scroll = Math.max(0, state.scroll - 1);
     state.status = getStatus(state);
     render();
@@ -194,4 +210,21 @@ function updateTopicPostHeader(post: NonNullable<TuiState["topic"]>["posts"][num
   if (headerLine.line >= 0 && headerLine.line < topic.lines.length) {
     topic.lines[headerLine.line] = header;
   }
+}
+
+async function openCurrentPostUserProfile(context: RuntimeContext): Promise<void> {
+  const { state, client, render, nextSignal } = context;
+  const topic = state.topic;
+  if (!topic) {
+    return;
+  }
+
+  const post = currentTopicPost(topic, state.scroll);
+  if (!post?.userId) {
+    state.status = "当前楼层没有可打开的用户页";
+    render();
+    return;
+  }
+
+  await openUserProfile(client, state, post.userId, render, false, nextSignal());
 }

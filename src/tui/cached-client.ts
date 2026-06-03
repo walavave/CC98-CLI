@@ -86,6 +86,19 @@ export class CachedCc98Client {
     return this.cache.getOrSet("user:me", 60 * second, () => this.client.getMe({ signal }), { force });
   }
 
+  getUserProfile(userId: number, force = false, signal?: AbortSignal): Promise<unknown> {
+    return this.cache.getOrSet(`user:profile:${userId}`, 60 * second, () => this.client.getUserProfile(userId, { signal }), { force });
+  }
+
+  getRecentTopics(userId: number | undefined, from = 0, size = 11, force = false, signal?: AbortSignal): Promise<unknown> {
+    return this.cache.getOrSet(
+      `user:recent-topic:${userId ?? "me"}:${from}:${size}`,
+      30 * second,
+      () => this.client.getRecentTopics(userId, from, size, { signal }),
+      { force }
+    );
+  }
+
   getTopic(topicId: number, force = false, signal?: AbortSignal): Promise<unknown> {
     return this.cache.getOrSet(`topic:meta:${topicId}`, 60 * second, () => this.client.getTopic(topicId, { signal }), { force });
   }

@@ -104,6 +104,7 @@ q                 退出
 [tui]
 hide_top_chrome = false
 preview_images = true
+navigation_history_limit = 10
 compose_key = "c"
 post_signature = "[right][color=#808080]——来自终端应用[/color]「[b][url=https://github.com/walavave/CC98-CLI]CC98 CLI[/url][/b]」[/right]"
 ```
@@ -111,6 +112,8 @@ post_signature = "[right][color=#808080]——来自终端应用[/color]「[b][u
 图片预览目前支持 Kitty graphics protocol 和 iTerm2 inline image。若终端不支持对应协议，会保留文本图片占位。
 
 `post_signature` 只会在发送评论时追加到正文末尾，不会显示在编辑中的评论框里；支持 `\n`、`\t` 等常见转义。
+
+`navigation_history_limit` 控制 TUI 内“帖子 -> 用户 -> 帖子”这类右键深入导航的最大历史层数；超过后会清空这条返回链，后续左键返回会直接回到左侧栏对应主界面。
 
 快捷键映射文件路径为 `~/.config/cc98-cli/keymap.toml`。格式参考 `keymap.toml`，组合键使用尖括号表示，例如：
 

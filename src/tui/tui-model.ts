@@ -22,6 +22,7 @@ export interface ContentItem {
   topicId?: number;
   boardId?: number;
   chatUserId?: number;
+  userId?: number;
   sortTime?: number;
 }
 
@@ -31,6 +32,7 @@ export interface TuiState {
   navIndex: number;
   itemIndex: number;
   scroll: number;
+  historyLimit: number;
   sidebarWidth?: number;
   draggingSidebarDivider: boolean;
   loading: boolean;
@@ -45,10 +47,11 @@ export interface TuiState {
   viewTitle: string;
   items: ContentItem[];
   overview: ContentItem[];
-  parentList?: ListSnapshot;
+  history: ViewSnapshot[];
   currentBoard?: BoardListState;
   currentChat?: ChatListState;
   currentSearch?: SearchListState;
+  currentUser?: UserProfileListState;
   topic?: TopicReaderState;
   modal: ModalType;
   accountModal: AccountModalState;
@@ -63,7 +66,23 @@ export interface ListSnapshot {
   items: ContentItem[];
   itemIndex: number;
   status: string;
+  currentBoard?: BoardListState;
+  currentChat?: ChatListState;
+  currentSearch?: SearchListState;
+  currentUser?: UserProfileListState;
 }
+
+export interface TopicSnapshot {
+  viewTitle: string;
+  status: string;
+  scroll: number;
+  topic: TopicReaderState;
+  list: ListSnapshot;
+}
+
+export type ViewSnapshot =
+  | { kind: "list"; value: ListSnapshot }
+  | { kind: "topic"; value: TopicSnapshot };
 
 export interface BoardListState {
   boardId: number;
@@ -87,6 +106,14 @@ export interface SearchListState {
   hasMore: boolean;
   searched: boolean;
   focus: SearchFocus;
+}
+
+export interface UserProfileListState {
+  userId: number;
+  title: string;
+  loaded: number;
+  size: number;
+  hasMore: boolean;
 }
 
 export interface TopicReaderState {
@@ -127,6 +154,7 @@ export interface ComposeDialogState {
 
 export interface TopicPostEntry {
   id?: number;
+  userId?: number;
   floor?: number;
   author: string;
   time: string;

@@ -14,6 +14,7 @@ export interface AccountConfig {
 export interface TuiConfig {
   hideTopChrome: boolean;
   previewImages: boolean;
+  navigationHistoryLimit: number;
   composeKey: string;
   postSignature: string;
 }
@@ -25,6 +26,7 @@ const defaultConfig: AppConfig = {
   tui: {
     hideTopChrome: false,
     previewImages: true,
+    navigationHistoryLimit: 10,
     composeKey: "c",
     postSignature: "[right][color=#808080]——来自终端应用[/color]「[b][url=https://github.com/walavave/CC98-CLI]CC98 CLI[/url][/b]」[/right]"
   }
@@ -58,6 +60,7 @@ function mergeConfig(base: AppConfig, parsed: Record<string, Record<string, unkn
     tui: {
       hideTopChrome: booleanValue(tui.hide_top_chrome, base.tui.hideTopChrome),
       previewImages: booleanValue(tui.preview_images, base.tui.previewImages),
+      navigationHistoryLimit: positiveIntegerValue(tui.navigation_history_limit, base.tui.navigationHistoryLimit),
       composeKey: singleKeyValue(tui.compose_key, base.tui.composeKey),
       postSignature: stringValue(tui.post_signature, base.tui.postSignature)
     }
@@ -76,6 +79,10 @@ function stringValue(value: unknown, fallback: string): string {
   return typeof value === "string" ? value : fallback;
 }
 
+function positiveIntegerValue(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
 function parseTomlSubset(input: string): Record<string, Record<string, unknown>> {
   const result: Record<string, Record<string, unknown>> = {};
   let section = "";
@@ -91,7 +98,7 @@ function parseTomlSubset(input: string): Record<string, Record<string, unknown>>
       result[section] ??= {};
       continue;
     }
-    const keyMatch = /^([A-Za-z0-9_-]+)\s*=\s*(true|false|"(?:[^"\\]|\\.)*")$/i.exec(line);
+    const keyMatch = /^([A-Za-z0-9_-]+)\s*=\s*(true|false|\d+|"(?:[^"\\]|\\.)*")$/i.exec(line);
     if (!keyMatch || !section) {
       continue;
     }
@@ -99,7 +106,9 @@ function parseTomlSubset(input: string): Record<string, Record<string, unknown>>
     const rawValue = keyMatch[2] ?? "";
     result[section][keyMatch[1] ?? ""] = rawValue.startsWith("\"")
       ? parseTomlString(rawValue)
-      : rawValue.toLowerCase() === "true";
+      : /^\d+$/.test(rawValue)
+        ? Number(rawValue)
+        : rawValue.toLowerCase() === "true";
   }
 
   return result;

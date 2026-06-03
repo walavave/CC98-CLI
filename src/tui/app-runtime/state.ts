@@ -1,4 +1,4 @@
-import { restoreParentList } from "../app-data.js";
+import { restorePreviousView } from "../app-data.js";
 import { getStatus, navItems, type TuiState } from "../tui-model.js";
 
 export function showNotification(state: TuiState, message: string, durationMs = 3200): void {
@@ -13,6 +13,7 @@ export function leaveTopicMode(state: TuiState): void {
   state.focus = "content";
   state.viewTitle = state.currentBoard?.title
     ?? state.currentChat?.title
+    ?? state.currentUser?.title
     ?? state.currentSearch?.title
     ?? navItems[state.navIndex]?.label
     ?? state.viewTitle;
@@ -34,8 +35,8 @@ export function enterContentMode(state: TuiState, resetIndex = false): void {
 }
 
 export function leaveContentMode(state: TuiState): void {
-  if (state.parentList) {
-    restoreParentList(state);
+  if (state.history.length > 0) {
+    restorePreviousView(state);
     return;
   }
   state.mode = "list";

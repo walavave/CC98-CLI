@@ -113,8 +113,8 @@ export class Cc98Client {
     return this.request<unknown>(endpoints.forum.cardStat);
   }
 
-  async getUserProfile(userId: number): Promise<unknown> {
-    return this.request<unknown>(endpoints.user.profile(userId));
+  async getUserProfile(userId: number, options: RequestOptions = {}): Promise<unknown> {
+    return this.request<unknown>(endpoints.user.profile(userId), { signal: options.signal });
   }
 
   async getBasicUsers(ids: number[], options: RequestOptions = {}): Promise<unknown> {
@@ -197,8 +197,8 @@ export class Cc98Client {
     return this.request<unknown>(endpoints.topic.basic(ids));
   }
 
-  async getRecentTopics(userId: number | undefined, from = 0, size = 11): Promise<unknown> {
-    return this.request<unknown>(endpoints.topic.recent(userId, from, size));
+  async getRecentTopics(userId: number | undefined, from = 0, size = 11, options: RequestOptions = {}): Promise<unknown> {
+    return this.request<unknown>(endpoints.topic.recent(userId, from, size), { signal: options.signal });
   }
 
   async getBoardInfo(boardId: number, options: RequestOptions = {}): Promise<unknown> {

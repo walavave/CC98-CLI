@@ -15,6 +15,7 @@ import {
   type TopicPostEntry,
   type TopicReaderState,
   type TuiState,
+  type ViewSnapshot,
   type ViewId
 } from "./tui-model.js";
 import { renderMarkdownToLines, renderUbbToLines } from "./ubb-renderer.js";
@@ -80,7 +81,7 @@ export async function openTopic(
       return;
     }
     state.error = error instanceof Error ? error.message : String(error);
-    state.status = state.parentList
+    state.status = state.history.length > 0
       ? "版面读取失败；Esc/Backspace 返回版面列表  h 返回左栏  r 重试"
       : "版面读取失败；h 返回左栏  r 重试";
   } finally {
@@ -168,6 +169,55 @@ export async function openChat(
   }
 }
 
+export async function openUserProfile(
+  client: CachedCc98Client,
+  state: TuiState,
+  userId: number,
+  render: () => void,
+  force = false,
+  signal?: AbortSignal,
+  pushParent = true
+): Promise<void> {
+  prepareListView(state, {
+    title: `用户 #${userId}`,
+    status: "正在读取用户信息...",
+    currentUser: { userId, title: `用户 #${userId}`, loaded: 0, size: 10, hasMore: true },
+    pushParent
+  });
+  const currentUser = state.currentUser;
+  if (!currentUser) {
+    return;
+  }
+  render();
+
+  try {
+    const [profileRaw, topicsRaw] = await Promise.all([
+      client.getUserProfile(userId, force, signal),
+      client.getRecentTopics(userId, 0, currentUser.size + 1, force, signal)
+    ]);
+    const profile = asObject(profileRaw);
+    const recentTopics = asArray(topicsRaw);
+    const topicItems = recentTopics.slice(0, currentUser.size).map((topic) => topicItem(topic));
+    const name = String(profile.name ?? profile.userName ?? `#${userId}`).trim() || `#${userId}`;
+
+    currentUser.title = name;
+    currentUser.loaded = topicItems.length;
+    currentUser.hasMore = recentTopics.length > currentUser.size;
+    state.viewTitle = name;
+    state.items = [...buildUserProfileItems(profile), ...topicItems];
+    state.status = describeUserProfileStatus(state);
+  } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
+    state.error = error instanceof Error ? error.message : String(error);
+    state.status = "用户页读取失败；Esc/Backspace 返回  h 返回左栏  r 重试";
+  } finally {
+    state.loading = false;
+    render();
+  }
+}
+
 export async function loadNextChatPage(
   client: CachedCc98Client,
   state: TuiState,
@@ -200,6 +250,46 @@ export async function loadNextChatPage(
     }
     state.error = error instanceof Error ? error.message : String(error);
     state.status = "更早私信读取失败；n/Space 重试  Esc/Backspace 返回联系人";
+  } finally {
+    state.loadingMore = false;
+    render();
+  }
+}
+
+export async function loadNextUserTopicPage(
+  client: CachedCc98Client,
+  state: TuiState,
+  render: () => void,
+  signal?: AbortSignal
+): Promise<void> {
+  const currentUser = state.currentUser;
+  if (!currentUser || state.loadingMore || !currentUser.hasMore) {
+    return;
+  }
+
+  state.loadingMore = true;
+  state.status = "正在加载更多主题...";
+  render();
+
+  try {
+    const topics = asArray(await client.getRecentTopics(
+      currentUser.userId,
+      currentUser.loaded,
+      currentUser.size + 1,
+      false,
+      signal
+    ));
+    const nextItems = topics.slice(0, currentUser.size).map((topic) => topicItem(topic));
+    state.items = [...state.items, ...nextItems];
+    currentUser.loaded += nextItems.length;
+    currentUser.hasMore = topics.length > currentUser.size;
+    state.status = describeUserProfileStatus(state);
+  } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
+    state.error = error instanceof Error ? error.message : String(error);
+    state.status = "加载更多主题失败；n/Space 重试  Esc/Backspace 返回";
   } finally {
     state.loadingMore = false;
     render();
@@ -307,12 +397,16 @@ export async function loadNextSearchPage(
   }
 }
 
-export function restoreParentList(state: TuiState): void {
-  if (!state.parentList) {
+export function restorePreviousView(state: TuiState): void {
+  const snapshot = state.history.pop();
+  if (!snapshot) {
     return;
   }
-  applyListSnapshot(state, state.parentList);
-  state.parentList = undefined;
+  if (snapshot.kind === "topic") {
+    applyTopicSnapshot(state, snapshot.value);
+  } else {
+    applyListSnapshot(state, snapshot.value);
+  }
 }
 
 export async function loadNextTopicPage(
@@ -332,13 +426,17 @@ export async function loadNextTopicPage(
   render();
 
   try {
+    const previousPostCount = state.topic.posts.length;
     const posts = asArray(await client.getTopicPosts(state.topic.topicId, state.topic.loaded, state.topic.size, false, signal));
     appendTopicPosts(state.topic, posts, config, state.sidebarWidth);
     void loadTopicImagePreviews(state, render, config, state.sidebarWidth);
     state.topic.loaded += posts.length;
     state.topic.hasMore = posts.length === state.topic.size;
     if (advanceAfterLoad && posts.length > 0) {
-      state.scroll = Math.min(Math.max(0, state.topic.lines.length - 1), state.scroll + 1);
+      const nextPost = state.topic.posts[previousPostCount];
+      if (nextPost) {
+        state.scroll = nextPost.lineStart;
+      }
     }
   } catch (error) {
     if (isAbortError(error)) {
@@ -592,12 +690,36 @@ function currentTopicWidthEstimate(sidebarWidthOverride?: number): number {
   return Math.max(24, width - sidebarWidth - sidebarRuleWidth);
 }
 
+function snapshotCurrentView(state: TuiState): ViewSnapshot {
+  if (state.mode === "topic" && state.topic) {
+    return {
+      kind: "topic",
+      value: {
+        viewTitle: state.viewTitle,
+        status: state.status,
+        scroll: state.scroll,
+        topic: state.topic,
+        list: snapshotCurrentList(state)
+      }
+    };
+  }
+
+  return {
+    kind: "list",
+    value: snapshotCurrentList(state)
+  };
+}
+
 function snapshotCurrentList(state: TuiState): ListSnapshot {
   return {
     title: state.viewTitle,
     items: state.items,
     itemIndex: state.itemIndex,
-    status: state.status
+    status: state.status,
+    currentBoard: state.currentBoard,
+    currentChat: state.currentChat,
+    currentSearch: state.currentSearch,
+    currentUser: state.currentUser
   };
 }
 
@@ -608,11 +730,15 @@ function prepareListView(
     status: string;
     currentBoard?: TuiState["currentBoard"];
     currentChat?: TuiState["currentChat"];
+    currentUser?: TuiState["currentUser"];
     pushParent: boolean;
   }
 ): void {
   if (options.pushParent) {
-    state.parentList = snapshotCurrentList(state);
+    state.history.push(snapshotCurrentView(state));
+    if (state.history.length > state.historyLimit) {
+      state.history = [];
+    }
   }
 
   state.mode = "list";
@@ -626,6 +752,7 @@ function prepareListView(
   state.imageViewer = undefined;
   state.currentBoard = options.currentBoard;
   state.currentChat = options.currentChat;
+  state.currentUser = options.currentUser;
   state.currentSearch = undefined;
   state.viewTitle = options.title;
   state.items = [];
@@ -640,12 +767,41 @@ function applyListSnapshot(state: TuiState, snapshot: ListSnapshot): void {
   state.error = undefined;
   state.topic = undefined;
   state.imageViewer = undefined;
-  state.currentBoard = undefined;
-  state.currentChat = undefined;
-  state.currentSearch = undefined;
+  state.currentBoard = snapshot.currentBoard;
+  state.currentChat = snapshot.currentChat;
+  state.currentSearch = snapshot.currentSearch;
+  state.currentUser = snapshot.currentUser;
   state.viewTitle = snapshot.title;
   state.items = snapshot.items;
   state.itemIndex = snapshot.itemIndex;
+  state.status = snapshot.status;
+}
+
+function applyTopicSnapshot(
+  state: TuiState,
+  snapshot: {
+    viewTitle: string;
+    status: string;
+    scroll: number;
+    topic: TopicReaderState;
+    list: ListSnapshot;
+  }
+): void {
+  state.mode = "topic";
+  state.focus = "content";
+  state.loading = false;
+  state.loadingMore = false;
+  state.error = undefined;
+  state.items = snapshot.list.items;
+  state.itemIndex = snapshot.list.itemIndex;
+  state.scroll = snapshot.scroll;
+  state.topic = snapshot.topic;
+  state.imageViewer = undefined;
+  state.currentBoard = snapshot.list.currentBoard;
+  state.currentChat = snapshot.list.currentChat;
+  state.currentUser = snapshot.list.currentUser;
+  state.currentSearch = snapshot.list.currentSearch;
+  state.viewTitle = snapshot.viewTitle;
   state.status = snapshot.status;
 }
 
@@ -849,6 +1005,7 @@ function renderPosts(
     ) ?? "";
     entries.push({
       id: asNumber(post.id),
+      userId: asNumber(post.userId),
       floor: floorNumber,
       author,
       time,
@@ -967,6 +1124,36 @@ function item(title: string, value: unknown, meta?: string): ContentItem {
     meta,
     detail: value === undefined || value === null ? "-" : String(value)
   };
+}
+
+function buildUserProfileItems(profile: Record<string, unknown>): ContentItem[] {
+  const userId = asNumber(profile.id);
+  const name = String(profile.name ?? profile.userName ?? (userId !== undefined ? `#${userId}` : "用户")).trim() || "用户";
+  const group = String(profile.displayTitle ?? profile.privilege ?? profile.levelTitle ?? "").trim();
+  const introduction = normalizePreview(String(profile.introduction ?? ""));
+
+  return [
+    {
+      title: name,
+      meta: [userId !== undefined ? `#${userId}` : undefined, group || undefined].filter(Boolean).join(" · "),
+      detail: introduction || "这个用户没有留下简介。"
+    },
+    item("发帖数", profile.postCount),
+    item("粉丝数", profile.fanCount),
+    item("关注数", profile.followCount),
+    item("威望", profile.prestige),
+    item("财富值", profile.wealth),
+    item("风评", profile.popularity),
+    item("收到的赞", profile.receivedLikeCount),
+    item("注册时间", formatTime(profile.registerTime)),
+    item("最后登录", formatTime(profile.lastLogOnTime))
+  ];
+}
+
+function describeUserProfileStatus(state: TuiState): string {
+  return state.currentUser?.hasMore
+    ? "用户页：j/k 浏览  l 打开主题  n/Space 更多主题  Esc/Backspace 返回"
+    : "用户页：j/k 浏览  l 打开主题  Esc/Backspace 返回";
 }
 
 function topicItem(value: unknown, fallbackBoard?: ContentItem): ContentItem {
@@ -1136,6 +1323,13 @@ function timestampOf(value: unknown): number | undefined {
   }
   const timestamp = new Date(value).getTime();
   return Number.isFinite(timestamp) ? timestamp : undefined;
+}
+
+function formatTime(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) {
+    return "-";
+  }
+  return value.replace("T", " ").slice(0, 16);
 }
 
 function normalizeInlineText(value: string): string {

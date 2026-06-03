@@ -39,6 +39,7 @@ export async function runTui(): Promise<void> {
     navIndex: 0,
     itemIndex: 0,
     scroll: 0,
+    historyLimit: config.tui.navigationHistoryLimit,
     sidebarWidth: undefined,
     draggingSidebarDivider: false,
     loading: true,
@@ -47,6 +48,10 @@ export async function runTui(): Promise<void> {
     viewTitle: "十大",
     items: [],
     overview: [],
+    history: [],
+    currentBoard: undefined,
+    currentChat: undefined,
+    currentUser: undefined,
     currentSearch: undefined,
     modal: null,
     accountModal: {
@@ -94,9 +99,10 @@ export async function runTui(): Promise<void> {
         state.items = [];
         state.topic = undefined;
         state.imageViewer = undefined;
-        state.parentList = undefined;
+        state.history = [];
         state.currentBoard = undefined;
         state.currentChat = undefined;
+        state.currentUser = undefined;
         state.currentSearch = nav.id === "search" ? createSearchState() : undefined;
         render();
 
