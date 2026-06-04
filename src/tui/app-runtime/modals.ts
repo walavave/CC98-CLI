@@ -2,7 +2,7 @@ import { checkForUpdate } from "../../update.js";
 import { createLoginForm, isPrintableInput, updateLoginField } from "../account-modal.js";
 import { emotionCategories, getEmotionCategory } from "../emotion-catalog.js";
 import { graphemes } from "../text.js";
-import { getDefaultAccountName, normalizeLoginMessage, refreshAccounts } from "../app-data.js";
+import { getDefaultAccountName, normalizeLoginMessage, refreshAccounts } from "../data/accounts.js";
 import { getStatus } from "../tui-model.js";
 import type { RuntimeContext } from "./context.js";
 import { showNotification } from "./state.js";
@@ -261,8 +261,18 @@ export function requestLogout(context: RuntimeContext): void {
 
 export function openComposeModal(context: RuntimeContext): void {
   const { state, render } = context;
+  const target = state.currentChat
+    ? { kind: "chat" as const, userId: state.currentChat.userId, title: state.currentChat.title }
+    : state.topic
+      ? { kind: "topic" as const, topicId: state.topic.topicId }
+      : undefined;
+  if (!target) {
+    return;
+  }
   state.composeDialog = {
+    target,
     draft: "",
+    draftUnits: [],
     cursorIndex: 0,
     submitting: false,
     emotionCategoryIndex: 0,
@@ -270,7 +280,9 @@ export function openComposeModal(context: RuntimeContext): void {
     emotionFocus: "grid"
   };
   state.modal = "compose";
-  state.status = "评论：Enter 发送  表情快捷键打开表情  Esc 取消";
+  state.status = target.kind === "chat"
+    ? "私信：Enter 发送  Shift+Enter 换行  表情快捷键打开表情  Esc 取消"
+    : "评论：Enter 发送  Shift+Enter 换行  表情快捷键打开表情  Esc 取消";
   render();
 }
 
@@ -286,7 +298,9 @@ export function closeEmotionPicker(context: RuntimeContext): void {
   const { state } = context;
   if (state.composeDialog) {
     state.modal = "compose";
-    state.status = "评论：Enter 发送  表情快捷键打开表情  Esc 取消";
+    state.status = state.composeDialog.target.kind === "chat"
+      ? "私信：Enter 发送  Shift+Enter 换行  表情快捷键打开表情  Esc 取消"
+      : "评论：Enter 发送  Shift+Enter 换行  表情快捷键打开表情  Esc 取消";
   } else {
     state.modal = null;
     state.status = getStatus(state);
@@ -298,10 +312,13 @@ export function insertComposeText(context: RuntimeContext, value: string): void 
   if (!state.composeDialog) {
     return;
   }
-  const units = graphemes(state.composeDialog.draft);
-  units.splice(state.composeDialog.cursorIndex, 0, ...graphemes(value));
-  state.composeDialog.draft = units.join("");
-  state.composeDialog.cursorIndex += graphemes(value).length;
+  const insertedUnits = graphemes(value);
+  if (insertedUnits.length === 0) {
+    return;
+  }
+  state.composeDialog.draftUnits.splice(state.composeDialog.cursorIndex, 0, ...insertedUnits);
+  state.composeDialog.draft = state.composeDialog.draftUnits.join("");
+  state.composeDialog.cursorIndex += insertedUnits.length;
 }
 
 export function handleComposeBackspace(context: RuntimeContext): void {
@@ -312,9 +329,8 @@ export function handleComposeBackspace(context: RuntimeContext): void {
   if (state.composeDialog.cursorIndex <= 0) {
     return;
   }
-  const units = graphemes(state.composeDialog.draft);
-  units.splice(state.composeDialog.cursorIndex - 1, 1);
-  state.composeDialog.draft = units.join("");
+  state.composeDialog.draftUnits.splice(state.composeDialog.cursorIndex - 1, 1);
+  state.composeDialog.draft = state.composeDialog.draftUnits.join("");
   state.composeDialog.cursorIndex -= 1;
 }
 
@@ -324,7 +340,7 @@ export function moveComposeCursor(context: RuntimeContext, delta: number): void 
   if (!compose) {
     return;
   }
-  const length = graphemes(compose.draft).length;
+  const length = compose.draftUnits.length;
   compose.cursorIndex = Math.max(0, Math.min(length, compose.cursorIndex + delta));
 }
 

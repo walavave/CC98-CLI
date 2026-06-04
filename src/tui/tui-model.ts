@@ -19,6 +19,7 @@ export interface ContentItem {
   title: string;
   meta?: string;
   detail?: string;
+  action?: string;
   topicId?: number;
   boardId?: number;
   chatUserId?: number;
@@ -49,6 +50,7 @@ export interface TuiState {
   overview: ContentItem[];
   history: ViewSnapshot[];
   currentBoard?: BoardListState;
+  currentFeed?: FeedListState;
   currentChat?: ChatListState;
   currentSearch?: SearchListState;
   currentUser?: UserProfileListState;
@@ -67,6 +69,7 @@ export interface ListSnapshot {
   itemIndex: number;
   status: string;
   currentBoard?: BoardListState;
+  currentFeed?: FeedListState;
   currentChat?: ChatListState;
   currentSearch?: SearchListState;
   currentUser?: UserProfileListState;
@@ -87,6 +90,14 @@ export type ViewSnapshot =
 export interface BoardListState {
   boardId: number;
   title: string;
+}
+
+export interface FeedListState {
+  kind: "new" | "following" | "messages" | "me-profile" | "me-favorites" | "me-replies" | "me-history" | "me-fans";
+  title: string;
+  loaded: number;
+  size: number;
+  hasMore: boolean;
 }
 
 export interface ChatListState {
@@ -114,12 +125,15 @@ export interface UserProfileListState {
   loaded: number;
   size: number;
   hasMore: boolean;
+  isFollowed: boolean;
 }
 
 export interface TopicReaderState {
   topicId: number;
   title: string;
   meta: string;
+  isFavorite: boolean;
+  forceRefresh: boolean;
   lines: string[];
   posts: TopicPostEntry[];
   loaded: number;
@@ -143,7 +157,9 @@ export interface ImageViewerState {
 }
 
 export interface ComposeDialogState {
+  target: { kind: "topic"; topicId: number } | { kind: "chat"; userId: number; title: string };
   draft: string;
+  draftUnits: string[];
   cursorIndex: number;
   preferredColumn?: number;
   submitting: boolean;

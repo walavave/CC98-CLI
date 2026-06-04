@@ -1,5 +1,6 @@
 import type { TuiConfig } from "../../config.js";
-import { jumpRelativeTopicFloor, jumpToTopicFloor, loadNextTopicPage, openTopic, openUserProfile } from "../app-data.js";
+import { openUserProfile } from "../data/content.js";
+import { jumpRelativeTopicFloor, jumpToTopicFloor, loadNextTopicPage, openTopic } from "../data/topic.js";
 import { currentTopicPost, getStatus, type TuiState } from "../tui-model.js";
 import type { RuntimeContext } from "./context.js";
 import { openTopicImageViewer, stepTopicImageViewer } from "./image-viewer.js";
@@ -66,6 +67,10 @@ export function handleTopicMode(context: RuntimeContext, key: string, keyAction:
   }
   if (key === "s" || keyAction === "topic.dislike-post") {
     void reactToCurrentTopicPost(context, false);
+    return;
+  }
+  if (key === "d" || keyAction === "topic.favorite-topic") {
+    void toggleCurrentTopicFavorite(context);
     return;
   }
   if (key === "u") {
@@ -227,4 +232,39 @@ async function openCurrentPostUserProfile(context: RuntimeContext): Promise<void
   }
 
   await openUserProfile(client, state, post.userId, render, false, nextSignal());
+}
+
+async function toggleCurrentTopicFavorite(context: RuntimeContext): Promise<void> {
+  const { state, client, render } = context;
+  const topic = state.topic;
+  if (!topic || state.loading || state.loadingMore) {
+    return;
+  }
+
+  const nextFavoriteState = !topic.isFavorite;
+  state.status = nextFavoriteState ? "正在收藏帖子..." : "正在取消收藏...";
+  render();
+
+  try {
+    if (nextFavoriteState) {
+      await client.favoriteTopic(topic.topicId);
+    } else {
+      await client.unfavoriteTopic(topic.topicId);
+    }
+    topic.isFavorite = nextFavoriteState;
+    if (!nextFavoriteState && state.currentFeed?.kind === "me-favorites") {
+      state.items = state.items.filter((item) => item.topicId !== topic.topicId);
+      if (state.currentFeed.loaded > 0) {
+        state.currentFeed.loaded = Math.max(0, state.currentFeed.loaded - 1);
+      }
+      state.itemIndex = Math.max(0, Math.min(state.itemIndex, state.items.length - 1));
+    }
+    showNotification(state, nextFavoriteState ? "已收藏当前帖子" : "已取消收藏当前帖子");
+    state.status = getStatus(state);
+  } catch (error) {
+    state.error = error instanceof Error ? error.message : String(error);
+    state.status = nextFavoriteState ? "收藏失败" : "取消收藏失败";
+  } finally {
+    render();
+  }
 }

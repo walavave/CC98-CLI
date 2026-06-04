@@ -9,7 +9,7 @@ import { emotionCategories, getEmotionPreview, getEmotionCategory } from "./emot
 import { imagePreviewRows } from "./image-preview.js";
 import { center, fill, length, pad, rect, split } from "./layout.js";
 import type { TerminalFrame, TerminalImageOverlay } from "./terminal.js";
-import { blank, cellWidth, fit, graphemes, truncate } from "./text.js";
+import { blank, cellWidth, fit, truncate, wrapText } from "./text.js";
 import { ruleLine, selectedLine, styled, textStyle, theme } from "./theme.js";
 import {
   currentTopicLine,
@@ -30,6 +30,71 @@ export function getSidebarWidth(totalWidth: number, preferred?: number): number 
     return fallback;
   }
   return Math.max(10, Math.min(preferred, Math.max(10, Math.floor(totalWidth * 0.35))));
+}
+
+export function getRenderedListItemIndexAtRow(
+  state: TuiState,
+  width: number,
+  height: number,
+  rowIndex: number
+): number | undefined {
+  const contentRow = rowIndex - 2;
+  if (contentRow < 0) {
+    return undefined;
+  }
+
+  const wrapDetail = shouldWrapListDetail(state);
+  const inlineDetail = shouldInlineListDetail(state);
+  const contentHeight = Math.max(1, height - 2);
+  const scroll = getListScroll(state, contentHeight, width, wrapDetail, inlineDetail);
+  let usedRows = 0;
+
+  for (let index = scroll; index < state.items.length; index += 1) {
+    const itemHeight = getListItemHeight(state.items[index], width, wrapDetail, inlineDetail);
+    if (usedRows + itemHeight > contentHeight) {
+      break;
+    }
+    if (contentRow >= usedRows && contentRow < usedRows + itemHeight) {
+      return index;
+    }
+    usedRows += itemHeight;
+  }
+
+  return undefined;
+}
+
+export function getRenderedSearchItemIndexAtRow(
+  state: TuiState,
+  width: number,
+  height: number,
+  rowIndex: number
+): number | undefined {
+  const search = state.currentSearch;
+  if (!search) {
+    return undefined;
+  }
+
+  const contentRow = rowIndex - 3;
+  if (contentRow < 0) {
+    return undefined;
+  }
+
+  const contentHeight = Math.max(1, height - 3);
+  const scroll = getListScroll(state, contentHeight, width, false, true);
+  let usedRows = 0;
+
+  for (let index = scroll; index < state.items.length; index += 1) {
+    const itemHeight = getListItemHeight(state.items[index], width, false, true);
+    if (usedRows + itemHeight > contentHeight) {
+      break;
+    }
+    if (contentRow >= usedRows && contentRow < usedRows + itemHeight) {
+      return index;
+    }
+    usedRows += itemHeight;
+  }
+
+  return undefined;
 }
 
 export function draw(state: TuiState, size: { columns: number; rows: number }, config: TuiConfig): TerminalFrame {
@@ -198,20 +263,25 @@ function drawMain(state: TuiState, width: number, height: number): TopicDrawResu
   rows.push(ruleLine(Math.max(0, width - 1)));
 
   const contentHeight = Math.max(1, height - 2);
-  const scroll = getListScroll(state, contentHeight);
-  const visible = getVisibleItems(state.items, scroll, contentHeight);
+  const wrapDetail = shouldWrapListDetail(state);
+  const inlineDetail = shouldInlineListDetail(state);
+  const scroll = getListScroll(state, contentHeight, width, wrapDetail, inlineDetail);
+  const visible = getVisibleItems(state.items, scroll, contentHeight, width, wrapDetail, inlineDetail);
   visible.forEach(({ item: itemValue, index }) => {
-    const itemHeight = getListItemHeight(itemValue);
+    const itemHeight = getListItemHeight(itemValue, width, wrapDetail, inlineDetail);
     if (rows.length + itemHeight > height) {
       return;
     }
     const active = index === state.itemIndex && (state.focus === "content" || state.mode === "settings");
     const marker = active ? theme.marker.selected : theme.marker.normal;
-    const title = fit(` ${marker} ${listItemTitle(itemValue)}`, width);
+    const title = fit(` ${marker} ${listItemTitle(itemValue, inlineDetail)}`, width);
     rows.push(active ? selectedLine(title, width, state.focus === "content" || state.mode === "settings") : textStyle.muted(title));
 
     if (itemValue.meta) {
       rows.push(fit(textStyle.muted(`  ${itemValue.meta}`), width));
+    }
+    for (const detailLine of getListItemDetailLines(itemValue, width, wrapDetail, inlineDetail)) {
+      rows.push(fit(textStyle.muted(`  ${detailLine}`), width));
     }
   });
 
@@ -222,13 +292,15 @@ function drawMain(state: TuiState, width: number, height: number): TopicDrawResu
   const lastVisibleIndex = visible.at(-1)?.index ?? scroll - 1;
   if (lastVisibleIndex < state.items.length - 1 && rows.length < height) {
     rows.push(fit(textStyle.muted(`  ↓ 还有 ${state.items.length - lastVisibleIndex - 1} 项`), width));
+  } else if (state.currentFeed?.hasMore && rows.length < height) {
+    rows.push(fit(textStyle.muted("  ↓ 到底自动继续加载，或按 n/Space"), width));
   }
 
   return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
 }
 
-function listItemTitle(itemValue: { title: string; detail?: string }): string {
-  if (!itemValue.detail) {
+function listItemTitle(itemValue: { title: string; detail?: string }, inlineDetail: boolean): string {
+  if (!itemValue.detail || !inlineDetail) {
     return itemValue.title;
   }
   if ("topicId" in itemValue && itemValue.topicId !== undefined) {
@@ -237,21 +309,29 @@ function listItemTitle(itemValue: { title: string; detail?: string }): string {
   return `${itemValue.title}  ${truncate(itemValue.detail, 80)}`;
 }
 
-function getListItemHeight(itemValue: { meta?: string }): number {
-  return itemValue.meta ? 2 : 1;
+function getListItemHeight(
+  itemValue: { meta?: string; detail?: string; topicId?: number },
+  width: number,
+  wrapDetail: boolean,
+  inlineDetail: boolean
+): number {
+  return 1 + (itemValue.meta ? 1 : 0) + getListItemDetailLines(itemValue, width, wrapDetail, inlineDetail).length;
 }
 
 function getVisibleItems(
   items: ContentItem[],
   scroll: number,
-  availableRows: number
+  availableRows: number,
+  width: number,
+  wrapDetail: boolean,
+  inlineDetail: boolean
 ): Array<{ item: ContentItem; index: number }> {
   const visible: Array<{ item: ContentItem; index: number }> = [];
   let usedRows = 0;
 
   for (let index = scroll; index < items.length; index += 1) {
     const item = items[index];
-    const itemHeight = getListItemHeight(item);
+    const itemHeight = getListItemHeight(item, width, wrapDetail, inlineDetail);
     if (usedRows + itemHeight > availableRows) {
       break;
     }
@@ -266,7 +346,10 @@ function isListItemVisible(
   items: ContentItem[],
   scroll: number,
   itemIndex: number,
-  availableRows: number
+  availableRows: number,
+  width: number,
+  wrapDetail: boolean,
+  inlineDetail: boolean
 ): boolean {
   if (itemIndex < scroll) {
     return false;
@@ -274,7 +357,7 @@ function isListItemVisible(
 
   let usedRows = 0;
   for (let index = scroll; index <= itemIndex && index < items.length; index += 1) {
-    usedRows += getListItemHeight(items[index]);
+    usedRows += getListItemHeight(items[index], width, wrapDetail, inlineDetail);
     if (usedRows > availableRows) {
       return false;
     }
@@ -283,16 +366,22 @@ function isListItemVisible(
   return true;
 }
 
-function getListScroll(state: TuiState, availableRows: number): number {
+function getListScroll(
+  state: TuiState,
+  availableRows: number,
+  width: number,
+  wrapDetail: boolean,
+  inlineDetail: boolean
+): number {
   const maxScroll = Math.max(0, state.items.length - 1);
   const current = Math.min(Math.max(0, state.scroll), maxScroll);
   if (state.itemIndex < current) {
     return state.itemIndex;
   }
 
-  if (!isListItemVisible(state.items, current, state.itemIndex, availableRows)) {
+  if (!isListItemVisible(state.items, current, state.itemIndex, availableRows, width, wrapDetail, inlineDetail)) {
     let next = current;
-    while (next < state.itemIndex && !isListItemVisible(state.items, next, state.itemIndex, availableRows)) {
+    while (next < state.itemIndex && !isListItemVisible(state.items, next, state.itemIndex, availableRows, width, wrapDetail, inlineDetail)) {
       next += 1;
     }
     return next;
@@ -328,8 +417,8 @@ function drawSearch(state: TuiState, width: number, height: number): TopicDrawRe
   }
 
   const contentHeight = Math.max(1, height - 3);
-  const scroll = getListScroll(state, contentHeight);
-  const visible = getVisibleItems(state.items, scroll, contentHeight);
+  const scroll = getListScroll(state, contentHeight, width, false, true);
+  const visible = getVisibleItems(state.items, scroll, contentHeight, width, false, true);
 
   if (visible.length === 0) {
     rows.push(textStyle.muted(search.searched ? " 暂无搜索结果" : " 在输入框中输入关键词并按 Enter"));
@@ -337,13 +426,13 @@ function drawSearch(state: TuiState, width: number, height: number): TopicDrawRe
   }
 
   visible.forEach(({ item: itemValue, index }) => {
-    const itemHeight = getListItemHeight(itemValue);
+    const itemHeight = getListItemHeight(itemValue, width, false, true);
     if (rows.length + itemHeight > height) {
       return;
     }
     const active = index === state.itemIndex && state.focus === "content" && search.focus === "results";
     const marker = active ? theme.marker.selected : theme.marker.normal;
-    const title = fit(` ${marker} ${listItemTitle(itemValue)}`, width);
+    const title = fit(` ${marker} ${listItemTitle(itemValue, true)}`, width);
     rows.push(active ? selectedLine(title, width, true) : textStyle.muted(title));
     if (itemValue.meta) {
       rows.push(fit(textStyle.muted(`  ${itemValue.meta}`), width));
@@ -358,6 +447,33 @@ function drawSearch(state: TuiState, width: number, height: number): TopicDrawRe
   }
 
   return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
+}
+
+function getListItemDetailLines(
+  itemValue: { detail?: string; topicId?: number },
+  width: number,
+  wrapDetail: boolean,
+  inlineDetail: boolean
+): string[] {
+  if (!itemValue.detail || inlineDetail) {
+    return [];
+  }
+  if ("topicId" in itemValue && itemValue.topicId !== undefined) {
+    return [];
+  }
+  const detailWidth = Math.max(1, width - 2);
+  if (!wrapDetail) {
+    return [truncate(itemValue.detail, detailWidth)];
+  }
+  return wrapText(itemValue.detail, detailWidth);
+}
+
+function shouldWrapListDetail(state: TuiState): boolean {
+  return Boolean(state.currentChat);
+}
+
+function shouldInlineListDetail(state: TuiState): boolean {
+  return !shouldWrapListDetail(state);
 }
 
 function drawTopic(state: TuiState, width: number, height: number): TopicDrawResult {
@@ -478,13 +594,16 @@ function isNotificationStatus(status: string): boolean {
 function getKeyHints(state: TuiState): string {
   const hints = ["j/k 楼层", "↑↓ 逐行", "h← 返回", "l→ 进入", "Enter 确认"];
   if (state.currentChat) {
-    hints.push("n 更多");
+    hints.push("c 私信", "n 更多");
   }
   if (state.currentUser) {
+    hints.push("a 关注", "n 更多");
+  }
+  if (state.currentFeed) {
     hints.push("n 更多");
   }
   if (state.mode === "topic") {
-    hints.push("c 评论", "a 赞", "s 踩", "u 用户页");
+    hints.push("c 评论", "a 赞", "s 踩", "d 收藏", "u 用户页");
   }
   hints.push("f 搜索", "r 刷新", "? 帮助", "q 退出");
   return hints.join(" ");
@@ -507,8 +626,11 @@ function drawHelpModal(baseLines: string[], width: number, height: number): stri
     "   f           跳到搜索框",
     "   r           刷新当前视图",
     "   n           加载更多",
-    "   c           打开评论框",
+    "   c           打开评论框/私信框",
+    "   Shift+Enter 评论框内换行",
+    "   a           用户页关注/取关当前用户",
     "   a / s       对当前楼层点赞 / 点踩",
+    "   d           收藏/取消收藏当前帖子",
     "   u           打开当前楼层作者的用户页",
     "   Space       帖子内看图",
     "   ←/→         预览切图",
@@ -580,10 +702,10 @@ function drawComposeModal(baseLines: string[], state: TuiState, width: number, h
   const innerWidth = Math.max(1, area.width - 2);
   const draftHeight = Math.max(3, area.height - 5);
   const contentWidth = Math.max(1, innerWidth - 1);
-  const draftView = buildComposeDraftView(compose.draft, compose.cursorIndex, contentWidth, draftHeight);
+  const draftView = buildComposeDraftView(compose.draftUnits, compose.cursorIndex, contentWidth, draftHeight);
   const rows = [
     fit(
-      `${textStyle.primaryBold(" 发表评论")}${textStyle.muted(` ${compose.submitting ? "正在发送..." : "Enter 发送  表情快捷键打开表情  Esc 取消"}`)}`,
+      `${textStyle.primaryBold(compose.target.kind === "chat" ? " 发送私信" : " 发表评论")}${textStyle.muted(` ${compose.submitting ? "正在发送..." : "Enter 发送  Shift+Enter 换行  表情快捷键打开表情  Esc 取消"}`)}`,
       innerWidth
     ),
     ruleLine(Math.max(0, innerWidth))
@@ -605,29 +727,34 @@ function drawComposeModal(baseLines: string[], state: TuiState, width: number, h
 }
 
 function buildComposeDraftView(
-  draft: string,
+  draftUnits: string[],
   cursorIndex: number,
   width: number,
   viewportHeight: number
 ): { lines: string[] } {
-  const logicalLines = draft.length > 0 ? draft.split("\n") : [""];
+  const logicalLines = splitComposeUnitsByNewline(draftUnits);
   const visualLines: string[] = [];
   let offset = 0;
   let cursorRow = 0;
 
   logicalLines.forEach((logicalLine, logicalIndex) => {
-    const units = graphemes(logicalLine);
-    const wrapped = wrapComposeLine(units, width);
+    const wrapped = wrapComposeLine(logicalLine, width);
+    let segmentOffset = 0;
     wrapped.forEach((segment, segmentIndex) => {
-      const segmentStart = wrapped.slice(0, segmentIndex).reduce((total, entry) => total + entry.length, 0);
+      const segmentStart = segmentOffset;
       const segmentEnd = segmentStart + segment.length;
-      if (cursorIndex >= offset + segmentStart && cursorIndex <= offset + segmentEnd) {
+      const hasCursor = cursorIndex >= offset + segmentStart && cursorIndex <= offset + segmentEnd;
+      if (hasCursor) {
         cursorRow = visualLines.length;
       }
-      visualLines.push(renderComposeCursor(segment, cursorIndex - offset - segmentStart));
+      visualLines.push(renderComposeCursor(
+        segment,
+        hasCursor ? cursorIndex - offset - segmentStart : undefined
+      ));
+      segmentOffset += segment.length;
     });
 
-    offset += units.length;
+    offset += logicalLine.length;
     if (logicalIndex < logicalLines.length - 1) {
       if (cursorIndex === offset) {
         cursorRow = visualLines.length;
@@ -639,7 +766,7 @@ function buildComposeDraftView(
   if (visualLines.length === 0) {
     visualLines.push(renderComposeCursor([], 0));
     cursorRow = 0;
-  } else if (cursorIndex === graphemes(draft).length && draft.endsWith("\n")) {
+  } else if (cursorIndex === draftUnits.length && draftUnits.at(-1) === "\n") {
     cursorRow = visualLines.length;
     visualLines.push(renderComposeCursor([], 0));
   }
@@ -650,6 +777,22 @@ function buildComposeDraftView(
     lines.push("");
   }
   return { lines };
+}
+
+function splitComposeUnitsByNewline(units: string[]): string[][] {
+  if (units.length === 0) {
+    return [[]];
+  }
+
+  const lines: string[][] = [[]];
+  for (const unit of units) {
+    if (unit === "\n") {
+      lines.push([]);
+      continue;
+    }
+    lines[lines.length - 1]?.push(unit);
+  }
+  return lines;
 }
 
 function wrapComposeLine(units: string[], width: number): string[][] {
@@ -675,7 +818,10 @@ function wrapComposeLine(units: string[], width: number): string[][] {
   return lines;
 }
 
-function renderComposeCursor(units: string[], cursorColumn: number): string {
+function renderComposeCursor(units: string[], cursorColumn?: number): string {
+  if (cursorColumn === undefined) {
+    return units.join("");
+  }
   const safeIndex = Math.max(0, Math.min(units.length, cursorColumn));
   const cursorStyle = `${theme.color.emotionSelectedBorder}`;
   const cursorGlyph = styled("|", cursorStyle);

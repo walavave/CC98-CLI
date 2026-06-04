@@ -1,10 +1,9 @@
 import { downloadUrlToDownloads } from "../downloads.js";
 import { fill, length, pad, rect, split } from "../layout.js";
-import { getSidebarWidth } from "../renderer.js";
+import { getRenderedListItemIndexAtRow, getRenderedSearchItemIndexAtRow, getSidebarWidth } from "../renderer.js";
 import { getStatus, navItems, settingsItems } from "../tui-model.js";
 import type { MouseEvent } from "../terminal.js";
 import type { RuntimeContext } from "./context.js";
-import { getContentListScroll } from "./content.js";
 import { enterContentMode, showNotification } from "./state.js";
 
 export async function handleTopicClick(
@@ -131,12 +130,8 @@ export function handleContentClick(
     if (rowIndex < 3) {
       return true;
     }
-    const itemHeight = 2;
-    const visibleCapacity = Math.max(1, Math.floor(Math.max(1, mainArea.height - 3) / itemHeight));
-    const scroll = getContentListScroll(state, visibleCapacity);
-    const itemOffset = Math.floor((rowIndex - 3) / itemHeight);
-    const itemIndex = scroll + itemOffset;
-    if (itemIndex < 0 || itemIndex >= state.items.length) {
+    const itemIndex = getRenderedSearchItemIndexAtRow(state, mainArea.width, mainArea.height, rowIndex);
+    if (itemIndex === undefined) {
       return true;
     }
     state.itemIndex = itemIndex;
@@ -151,15 +146,8 @@ export function handleContentClick(
     return true;
   }
 
-  const itemHeight = 2;
-  if (rowIndex % itemHeight !== 0 && rowIndex % itemHeight !== 1) {
-    return true;
-  }
-  const visibleCapacity = Math.max(1, Math.floor(Math.max(1, mainArea.height - 2) / itemHeight));
-  const scroll = getContentListScroll(state, visibleCapacity);
-  const itemOffset = Math.floor(rowIndex / itemHeight);
-  const itemIndex = scroll + itemOffset;
-  if (itemIndex < 0 || itemIndex >= state.items.length) {
+  const itemIndex = getRenderedListItemIndexAtRow(state, mainArea.width, mainArea.height, rowIndex + 2);
+  if (itemIndex === undefined) {
     return true;
   }
 

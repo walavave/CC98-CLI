@@ -17,11 +17,12 @@ const moduleDir = dirname(fileURLToPath(import.meta.url));
 const forumImageRoot = join(moduleDir, "..", "..", "assets", "forum-images");
 const mediaBlockStart = "@@CC98_MEDIA_START@@";
 const mediaBlockEnd = "@@CC98_MEDIA_END@@";
+const legacyMediaBlockTag = /@@CC98MEDIA(?:START|SART|END)@@/gi;
 
 export function renderUbbToLines(content: string, width: number, options: RenderOptions = {}): RenderedPost {
   const images: string[] = [];
   const links: string[] = [];
-  let text = content.replace(/\r\n/g, "\n");
+  let text = normalizeMediaBlocks(content.replace(/\r\n/g, "\n"));
 
   text = text.replace(/\[img\]([\s\S]*?)\[\/img\]/gi, (_match, url: string) => {
     const cleanUrl = normalizeImageUrl(url);
@@ -84,7 +85,7 @@ export function renderUbbToLines(content: string, width: number, options: Render
 export function renderMarkdownToLines(content: string, width: number, options: RenderOptions = {}): RenderedPost {
   const images: string[] = [];
   const links: string[] = [];
-  let text = content.replace(/\r\n/g, "\n");
+  let text = normalizeMediaBlocks(content.replace(/\r\n/g, "\n"));
 
   text = text.replace(/!\[([^\]]*)\]\(([^)\s]+(?:\s+"[^"]*")?)\)/g, (_match, _alt: string, target: string) => {
     const cleanUrl = normalizeMarkdownTarget(target);
@@ -195,6 +196,9 @@ function decodeHtml(value: string): string {
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, "\"")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&ensp;/g, "  ")
+    .replace(/&emsp;/g, " ")
     .replace(/&#39;/g, "'");
 }
 
@@ -232,6 +236,7 @@ function emotionBlock(index: number, url: string, previewRows = emotionPreviewRo
 
 function normalizeMediaBlocks(value: string): string {
   return value
+    .replace(legacyMediaBlockTag, "")
     .replace(new RegExp(`([^\\n])${escapeRegExp(mediaBlockStart)}`, "g"), `$1\n${mediaBlockStart}`)
     .replace(new RegExp(`${escapeRegExp(mediaBlockEnd)}([^\\n])`, "g"), `${mediaBlockEnd}\n$1`)
     .replace(new RegExp(mediaBlockStart, "g"), "")

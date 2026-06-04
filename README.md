@@ -90,7 +90,11 @@ f                 跳到搜索框
 r                 刷新
 ?                 显示帮助
 n 或 Space        加载更多
+a                 用户页关注 / 取消关注
 a / s             对当前楼层点赞 / 点踩
+c                 帖子评论 / 私聊发送输入框
+d                 收藏 / 取消收藏当前帖子
+Shift+Enter       评论框内换行
 q                 退出
 ```
 
@@ -125,11 +129,12 @@ prepend_keymap = [
   { on = "<A-Up>", run = "topic.previous-reply", desc = "上一条回复" },
   { on = "A", run = "topic.like-post", desc = "点赞当前楼层" },
   { on = "S", run = "topic.dislike-post", desc = "点踩当前楼层" },
+  { on = "D", run = "topic.favorite-topic", desc = "收藏当前帖子" },
   { on = "<C-a>", run = "compose.open-emotion", desc = "在评论框中打开表情面板" },
 ]
 ```
 
-默认已内置 `f` 用于跳到搜索界面的搜索框，`a` / `s` 用于在主题阅读模式下对当前楼层点赞、点踩，`<A-Down>` / `<A-Up>` 用于跳转相邻回复，`<C-a>` 用于在评论框里打开表情面板。`prepend_keymap` 中的自定义绑定会优先于内置默认值。
+默认已内置 `f` 用于跳到搜索界面的搜索框，`a` / `s` 用于在主题阅读模式下对当前楼层点赞、点踩，`d` 用于收藏或取消收藏当前帖子，`<A-Down>` / `<A-Up>` 用于跳转相邻回复，`<C-a>` 用于在评论框里打开表情面板。`prepend_keymap` 中的自定义绑定会优先于内置默认值。
 
 ## CLI
 

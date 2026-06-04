@@ -1,4 +1,4 @@
-import { restorePreviousView } from "../app-data.js";
+import { restorePreviousView } from "../data/navigation-state.js";
 import { getStatus, navItems, type TuiState } from "../tui-model.js";
 
 export function showNotification(state: TuiState, message: string, durationMs = 3200): void {
@@ -11,7 +11,9 @@ export function showNotification(state: TuiState, message: string, durationMs = 
 export function leaveTopicMode(state: TuiState): void {
   state.mode = "list";
   state.focus = "content";
+  state.scroll = 0;
   state.viewTitle = state.currentBoard?.title
+    ?? state.currentFeed?.title
     ?? state.currentChat?.title
     ?? state.currentUser?.title
     ?? state.currentSearch?.title

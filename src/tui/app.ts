@@ -5,7 +5,8 @@ import { loadConfig } from "../config.js";
 import { TokenStore } from "../storage/token-store.js";
 import { VpnStore } from "../storage/vpn-store.js";
 import { createLoginForm } from "./account-modal.js";
-import { createSearchState, loadView } from "./app-data.js";
+import { createSearchState } from "./data/navigation-state.js";
+import { loadView } from "./data/view-loader.js";
 import { createKeyHandler, createMouseHandler } from "./app-runtime.js";
 import { CachedCc98Client } from "./cached-client.js";
 import {
@@ -50,6 +51,7 @@ export async function runTui(): Promise<void> {
     overview: [],
     history: [],
     currentBoard: undefined,
+    currentFeed: undefined,
     currentChat: undefined,
     currentUser: undefined,
     currentSearch: undefined,
@@ -101,6 +103,7 @@ export async function runTui(): Promise<void> {
         state.imageViewer = undefined;
         state.history = [];
         state.currentBoard = undefined;
+        state.currentFeed = undefined;
         state.currentChat = undefined;
         state.currentUser = undefined;
         state.currentSearch = nav.id === "search" ? createSearchState() : undefined;
@@ -117,6 +120,7 @@ export async function runTui(): Promise<void> {
           if (next.overview) {
             state.overview = next.overview;
           }
+          state.currentFeed = next.feed;
           state.status = next.status ?? getStatus(state);
         } catch (error) {
           if (error instanceof Error && error.name === "AbortError") {

@@ -14,6 +14,8 @@ export const endpoints = {
   user: {
     me: `${base}/me`,
     profile: (userId: number) => `${base}/user/${userId}`,
+    follow: (userId: number) => `${base}/user/${userId}/follow`,
+    isFollowed: (userId: number) => `${base}/user/${userId}/isfollowed`,
     basic: (ids: number[]) => `${base}/user/basic?${ids.map((id) => `id=${id}`).join("&")}`,
     list: (ids: number[]) => `${base}/user?${ids.map((id) => `id=${id}`).join("&")}`,
     friendIds: (type: "follower" | "followee", from = 0, size = 10) =>
@@ -21,9 +23,11 @@ export const endpoints = {
     moment: (from = 0, size = 20) => `${base}/me/followee/topic?from=${from}&size=${size}&order=0`,
     favoriteUpdates: (from = 0, size = 20) => `${base}/topic/me/favorite?from=${from}&size=${size}&order=1`,
     favoriteGroups: `${base}/me/favorite-topic-group`,
+    recentPosts: (from = 0, size = 11) => `${base}/me/recent-post?from=${from}&size=${size}`,
     recentChats: (from = 0, size = 10) => `${base}/message/recent-contact-users?from=${from}&size=${size}`,
     chatHistory: (userId: number, from = 0, size = 10) =>
       `${base}/message/user/${userId}?from=${from}&size=${size}`,
+    sendMessage: (userId: number) => `${base}/message/user/${userId}`,
     search: (name: string) => `${base}/user/name/${encodeURIComponent(name)}`,
     unread: `${base}/me/unread-count`,
     notices: (type: "system" | "at" | "reply", from = 0, size = 10) =>
@@ -61,6 +65,8 @@ export const endpoints = {
     rateReasons: (type: number) => `${base}/post/rating-reason?type=${type}`
   },
   write: {
+    addFavorite: (topicId: number, groupId = 0) => `${base}/me/favorite/${topicId}?groupid=${groupId}`,
+    removeFavorite: (topicId: number) => `${base}/me/favorite/${topicId}`,
     signin: `${base}/me/signin`
   }
 } as const;

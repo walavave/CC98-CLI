@@ -8,7 +8,8 @@ export type TuiAction =
   | "topic.next-reply"
   | "topic.previous-reply"
   | "topic.like-post"
-  | "topic.dislike-post";
+  | "topic.dislike-post"
+  | "topic.favorite-topic";
 
 interface KeyBinding {
   on: string[][];
@@ -29,6 +30,7 @@ const defaultBindings: KeyBinding[] = [
   { on: [expandKeyToken("<C-a>")], run: "compose.open-emotion" },
   { on: [expandKeyToken("a")], run: "topic.like-post" },
   { on: [expandKeyToken("s")], run: "topic.dislike-post" },
+  { on: [expandKeyToken("d")], run: "topic.favorite-topic" },
   { on: [expandKeyToken("<A-Down>")], run: "topic.next-reply" },
   { on: [expandKeyToken("<A-Up>")], run: "topic.previous-reply" }
 ];
@@ -237,6 +239,7 @@ function normalizeRunAction(value: string): TuiAction | undefined {
     case "topic.previous-reply":
     case "topic.like-post":
     case "topic.dislike-post":
+    case "topic.favorite-topic":
       return value;
     default:
       return undefined;

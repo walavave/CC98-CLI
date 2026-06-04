@@ -1,5 +1,6 @@
 import type { RuntimeContext } from "./context.js";
-import { jumpToTopicFloor, openTopic } from "../app-data.js";
+import { openChat } from "../data/content.js";
+import { jumpToTopicFloor, openTopic } from "../data/topic.js";
 import { ensureEmotionPreviews, getEmotionCategory } from "../emotion-catalog.js";
 import { isPrintableInput } from "../account-modal.js";
 import { focusSearchInput, handleContentFocus, handleNavFocus, handleSettingsMode } from "./content.js";
@@ -132,6 +133,11 @@ function handleComposeModal(context: RuntimeContext, key: string, keyAction: str
     void submitCompose(context);
     return;
   }
+  if (isShiftEnter(key)) {
+    insertComposeText(context, "\n");
+    render();
+    return;
+  }
   if (key === "\t") {
     insertComposeText(context, "  ");
     render();
@@ -240,6 +246,10 @@ function isPrintableComposeInput(key: string): boolean {
   return key === " " || isPrintableInput(key);
 }
 
+function isShiftEnter(key: string): boolean {
+  return key === "\x1b[13;2u" || key === "\x1b[27;2;13~";
+}
+
 function getCurrentEmotionEntry(compose: NonNullable<RuntimeContext["state"]["composeDialog"]>) {
   const category = getEmotionCategory(compose.emotionCategoryIndex);
   return category.entries[compose.emotionSelectedIndex];
@@ -257,39 +267,53 @@ function getEmotionGridColumns(context: RuntimeContext): number {
 async function submitCompose(context: RuntimeContext): Promise<void> {
   const { client, state, render, config, nextSignal } = context;
   const compose = state.composeDialog;
-  const topic = state.topic;
-  if (!compose || !topic) {
+  if (!compose) {
     return;
   }
 
   const content = compose.draft.trim();
   if (!content) {
-    state.status = "评论内容不能为空";
+    state.status = compose.target.kind === "chat" ? "私信内容不能为空" : "评论内容不能为空";
     render();
     return;
   }
-  const payload = config.postSignature ? `${content}${config.postSignature}` : content;
+  const payload = compose.target.kind === "topic" && config.postSignature ? `${content}${config.postSignature}` : content;
 
   compose.submitting = true;
-  state.status = "正在发送评论...";
+  state.status = compose.target.kind === "chat" ? "正在发送私信..." : "正在发送评论...";
   render();
 
   try {
-    const result = await client.replyTopic(topic.topicId, payload);
+    if (compose.target.kind === "chat") {
+      const userId = compose.target.userId;
+      const title = compose.target.title;
+      await client.sendMessage(userId, payload);
+      state.composeDialog = undefined;
+      state.modal = null;
+      await openChat(client, state, userId, title, render, true, nextSignal(), false);
+      state.status = "私信已发送";
+      render();
+      return;
+    }
+
+    const topicId = compose.target.topicId;
+    const result = await client.replyTopic(topicId, payload);
     const floor = typeof result === "object" && result !== null && typeof (result as { floor?: unknown }).floor === "number"
       ? (result as { floor: number }).floor
       : undefined;
     state.composeDialog = undefined;
     state.modal = null;
-    await openTopic(client, state, topic.topicId, render, config, true, nextSignal());
+    await openTopic(client, state, topicId, render, config, true, nextSignal());
     if (floor && state.topic) {
-      await jumpToTopicFloor(client, state, floor, render, config, nextSignal());
+      await jumpToTopicFloor(client, state, floor, render, config, nextSignal(), true);
     }
     state.status = floor ? `已发送到 ${floor} 楼` : "评论已发送";
     render();
   } catch (error) {
     compose.submitting = false;
-    state.status = `评论发送失败：${error instanceof Error ? error.message : String(error)}`;
+    state.status = compose.target.kind === "chat"
+      ? `私信发送失败：${error instanceof Error ? error.message : String(error)}`
+      : `评论发送失败：${error instanceof Error ? error.message : String(error)}`;
     render();
   }
 }

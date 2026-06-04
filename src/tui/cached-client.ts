@@ -61,6 +61,42 @@ export class CachedCc98Client {
     return this.cache.getOrSet(`user:favorite-updates:${from}:${size}`, 15 * second, () => this.client.getFavoriteUpdates(from, size, { signal }), { force });
   }
 
+  getFavoriteTopics(from = 0, size = 11, order = 1, groupId = 0, force = false, signal?: AbortSignal): Promise<unknown> {
+    return this.cache.getOrSet(
+      `topic:favorite:${from}:${size}:${order}:${groupId}`,
+      20 * second,
+      () => this.client.getFavoriteTopics(from, size, order, groupId, { signal }),
+      { force }
+    );
+  }
+
+  getRecentPosts(from = 0, size = 11, force = false, signal?: AbortSignal): Promise<unknown> {
+    return this.cache.getOrSet(
+      `user:recent-post:${from}:${size}`,
+      20 * second,
+      () => this.client.getRecentPosts(from, size, { signal }),
+      { force }
+    );
+  }
+
+  getBrowseHistory(from = 0, size = 11, force = false, signal?: AbortSignal): Promise<unknown> {
+    return this.cache.getOrSet(
+      `user:browse-history:${from}:${size}`,
+      20 * second,
+      () => this.client.getBrowseHistory(from, size, { signal }),
+      { force }
+    );
+  }
+
+  getFriendIds(type: "follower" | "followee", from = 0, size = 10, force = false, signal?: AbortSignal): Promise<unknown> {
+    return this.cache.getOrSet(
+      `user:friend-ids:${type}:${from}:${size}`,
+      20 * second,
+      () => this.client.getFriendIds(type, from, size, { signal }),
+      { force }
+    );
+  }
+
   getRecentChats(from = 0, size = 10, force = false, signal?: AbortSignal): Promise<unknown> {
     return this.cache.getOrSet(`message:recent:${from}:${size}`, 15 * second, () => this.client.getRecentChats(from, size, { signal }), { force });
   }
@@ -90,6 +126,10 @@ export class CachedCc98Client {
     return this.cache.getOrSet(`user:profile:${userId}`, 60 * second, () => this.client.getUserProfile(userId, { signal }), { force });
   }
 
+  getUserFollowState(userId: number, force = false): Promise<unknown> {
+    return this.cache.getOrSet(`user:follow-state:${userId}`, 10 * second, () => this.client.isUserFollowed(userId), { force });
+  }
+
   getRecentTopics(userId: number | undefined, from = 0, size = 11, force = false, signal?: AbortSignal): Promise<unknown> {
     return this.cache.getOrSet(
       `user:recent-topic:${userId ?? "me"}:${from}:${size}`,
@@ -101,6 +141,10 @@ export class CachedCc98Client {
 
   getTopic(topicId: number, force = false, signal?: AbortSignal): Promise<unknown> {
     return this.cache.getOrSet(`topic:meta:${topicId}`, 60 * second, () => this.client.getTopic(topicId, { signal }), { force });
+  }
+
+  getTopicFavoriteState(topicId: number, force = false): Promise<unknown> {
+    return this.cache.getOrSet(`topic:favorite-state:${topicId}`, 10 * second, () => this.client.isTopicFavorite(topicId), { force });
   }
 
   getTopicPosts(topicId: number, from = 0, size = 10, force = false, signal?: AbortSignal): Promise<unknown> {
@@ -125,6 +169,40 @@ export class CachedCc98Client {
   async reactToPost(postId: number, isLike: boolean): Promise<unknown> {
     const result = await this.client.reactToPost(postId, isLike);
     await this.cache.delete(`post:reaction-state:${postId}`);
+    return result;
+  }
+
+  async favoriteTopic(topicId: number): Promise<unknown> {
+    const result = await this.client.favoriteTopic(topicId);
+    await this.cache.delete(`topic:favorite-state:${topicId}`);
+    return result;
+  }
+
+  async unfavoriteTopic(topicId: number): Promise<unknown> {
+    const result = await this.client.unfavoriteTopic(topicId);
+    await this.cache.delete(`topic:favorite-state:${topicId}`);
+    return result;
+  }
+
+  async followUser(userId: number): Promise<unknown> {
+    const result = await this.client.followUser(userId);
+    await this.cache.delete(`user:follow-state:${userId}`);
+    await this.cache.delete(`user:profile:${userId}`);
+    return result;
+  }
+
+  async unfollowUser(userId: number): Promise<unknown> {
+    const result = await this.client.unfollowUser(userId);
+    await this.cache.delete(`user:follow-state:${userId}`);
+    await this.cache.delete(`user:profile:${userId}`);
+    return result;
+  }
+
+  async sendMessage(userId: number, content: string): Promise<unknown> {
+    const result = await this.client.sendMessage(userId, content);
+    await this.cache.delete(`message:history:${userId}:0:10`);
+    await this.cache.delete(`message:history:${userId}:0:20`);
+    await this.cache.delete(`message:recent:0:10`);
     return result;
   }
 

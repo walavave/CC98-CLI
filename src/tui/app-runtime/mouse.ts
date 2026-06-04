@@ -1,8 +1,10 @@
-import { loadNextSearchPage, loadNextTopicPage } from "../app-data.js";
+import { loadNextFeedPage } from "../data/content.js";
+import { loadNextSearchPage } from "../data/search.js";
+import { loadNextTopicPage } from "../data/topic.js";
 import type { MouseEvent } from "../terminal.js";
 import type { TuiState } from "../tui-model.js";
 import type { RuntimeContext } from "./context.js";
-import { isAtSearchEnd } from "./content.js";
+import { isAtListEnd, isAtSearchEnd } from "./content.js";
 import { handleContentClick, handleSidebarClick, handleTopicClick } from "./interactions.js";
 import { isAtTopicEnd } from "./topic.js";
 
@@ -41,12 +43,15 @@ export function createMouseHandler(
     if (event.kind === "down" && event.button === "wheel-down") {
       const wasAtTopicEnd = isAtTopicEnd(state, context.config, size.rows);
       const wasAtSearchEnd = isAtSearchEnd(state);
+      const wasAtListEnd = isAtListEnd(state);
       handleScroll(state, 3);
       scheduleScrollRender();
       if (wasAtTopicEnd && state.mode === "topic" && state.topic?.hasMore && !state.loadingMore) {
         void loadNextTopicPage(context.client, state, render, context.config, context.nextSignal(), true);
       } else if (wasAtSearchEnd && state.currentSearch?.hasMore && !state.loadingMore && !state.loading) {
         void loadNextSearchPage(context.client, state, render, context.nextSignal());
+      } else if (wasAtListEnd && state.currentFeed?.hasMore && !state.loadingMore && !state.loading) {
+        void loadNextFeedPage(context.client, state, render, context.nextSignal());
       }
       return;
     }
