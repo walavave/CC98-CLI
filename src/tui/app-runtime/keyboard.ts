@@ -93,7 +93,7 @@ export function createKeyHandler(context: RuntimeContext): (key: string) => void
       return;
     }
 
-    handleContentFocus(context, key);
+    handleContentFocus(context, key, keyAction);
   };
 }
 

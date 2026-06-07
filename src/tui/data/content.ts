@@ -1,10 +1,9 @@
-import type { TuiConfig } from "../../config.js";
 import { CachedCc98Client } from "../cached-client.js";
 import type { NoticeType, TuiState } from "../tui-model.js";
 import { describeFeedStatus } from "./feed-status.js";
 import { topicItem } from "./items.js";
 import { prepareListView } from "./navigation-state.js";
-import { asArray, asBoolean, asObject, isAbortError } from "./utils.js";
+import { asArray, asObject, isAbortError } from "./utils.js";
 import {
   buildUserProfileItems,
   chatMessageItems,
@@ -343,6 +342,10 @@ function noticeFeedKind(type: NoticeType): NonNullable<TuiState["currentFeed"]>[
 }
 
 function applyMessageUnreadState(state: TuiState): void {
+  state.messageUnreadByUserId = mergeMessageUnreadState(state);
+}
+
+export function mergeMessageUnreadState(state: TuiState): Record<number, number> {
   const nextCounts = { ...state.messageUnreadByUserId };
   state.items = state.items.map((item) => {
     if (item.chatUserId === undefined) {
@@ -358,7 +361,7 @@ function applyMessageUnreadState(state: TuiState): void {
       unreadCount
     };
   });
-  state.messageUnreadByUserId = nextCounts;
+  return nextCounts;
 }
 
 function noticeListTitle(type: NoticeType): string {

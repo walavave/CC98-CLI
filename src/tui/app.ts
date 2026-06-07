@@ -5,6 +5,7 @@ import { loadConfig } from "../config.js";
 import { TokenStore } from "../storage/token-store.js";
 import { VpnStore } from "../storage/vpn-store.js";
 import { createLoginForm } from "./account-modal.js";
+import { mergeMessageUnreadState } from "./data/content.js";
 import { createSearchState } from "./data/navigation-state.js";
 import { loadView } from "./data/view-loader.js";
 import { createKeyHandler, createMouseHandler } from "./app-runtime.js";
@@ -217,22 +218,7 @@ export async function runTui(): Promise<void> {
 }
 
 function syncMessageUnreadState(state: TuiState): void {
-  const nextCounts: Record<number, number> = { ...state.messageUnreadByUserId };
-  state.items = state.items.map((item) => {
-    if (item.chatUserId === undefined) {
-      return item;
-    }
-    const knownUnread = item.unreadCount ?? (item.unread ? 1 : 0);
-    const previous = nextCounts[item.chatUserId];
-    const unreadCount = previous === 0 ? 0 : Math.max(knownUnread, previous ?? 0);
-    nextCounts[item.chatUserId] = unreadCount;
-    return {
-      ...item,
-      unread: unreadCount > 0,
-      unreadCount
-    };
-  });
-  state.messageUnreadByUserId = nextCounts;
+  state.messageUnreadByUserId = mergeMessageUnreadState(state);
 }
 
 function getWebVpnOptions(config: Awaited<ReturnType<VpnStore["getConfig"]>>): WebVpnOptions | undefined {

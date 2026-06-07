@@ -8,7 +8,7 @@ import type { RuntimeContext } from "./context.js";
 import { showNotification } from "./state.js";
 
 export function handleAccountModal(context: RuntimeContext, key: string): void {
-  const { state, render, tokenStore, load } = context;
+  const { state, render, tokenStore, load, client } = context;
   if (key === "j" || key === "\x1b[B") {
     state.accountModal.selectedIndex = Math.min(state.accountModal.accounts.length, state.accountModal.selectedIndex + 1);
     render();
@@ -39,10 +39,11 @@ export function handleAccountModal(context: RuntimeContext, key: string): void {
     state.status = `正在切换到 @${selected.account}...`;
     state.modal = null;
     render();
-    void tokenStore.useAccount(selected.account).then(() => {
+    void tokenStore.useAccount(selected.account).then(async () => {
+      await client.clearCache();
       state.account = selected.account;
       showNotification(state, `已切换到 @${selected.account}`);
-      void load(true);
+      await load(true);
     }).catch((error: unknown) => {
       state.error = error instanceof Error ? error.message : String(error);
       state.status = "账号切换失败";
@@ -52,7 +53,7 @@ export function handleAccountModal(context: RuntimeContext, key: string): void {
 }
 
 export function handleLoginModal(context: RuntimeContext, key: string): void {
-  const { state, render, rawClient, tokenStore, load } = context;
+  const { state, render, rawClient, tokenStore, load, client } = context;
   if (state.loginForm.submitting) {
     return;
   }
@@ -115,6 +116,7 @@ export function handleLoginModal(context: RuntimeContext, key: string): void {
         username,
         displayName: typeof me.name === "string" ? me.name : undefined
       });
+      await client.clearCache();
       state.account = resolvedAccount;
       await refreshAccounts(state, tokenStore);
       state.loginForm = createLoginForm();
@@ -199,6 +201,7 @@ export function handleConfirmModal(context: RuntimeContext, key: string): void {
     } else {
       await tokenStore.clear();
     }
+    await client.clearCache();
     state.account = await tokenStore.getCurrentAccountName();
     await refreshAccounts(state, tokenStore);
     showNotification(state, "已退出登录");

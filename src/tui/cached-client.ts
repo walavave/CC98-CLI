@@ -202,7 +202,7 @@ export class CachedCc98Client {
     );
   }
 
-  getPostReactionState(postId: number, force = false, signal?: AbortSignal): Promise<unknown> {
+  getPostReactionState(postId: number, force = false): Promise<unknown> {
     return this.cache.getOrSet(
       `post:reaction-state:${postId}`,
       10 * second,

@@ -109,7 +109,6 @@ q                 退出
 hide_top_chrome = false
 preview_images = true
 navigation_history_limit = 10
-compose_key = "c"
 post_signature = "[right][color=#808080]——来自终端应用[/color]「[b][url=https://github.com/walavave/CC98-CLI]CC98 CLI[/url][/b]」[/right]"
 ```
 
@@ -119,11 +118,14 @@ post_signature = "[right][color=#808080]——来自终端应用[/color]「[b][u
 
 `navigation_history_limit` 控制 TUI 内“帖子 -> 用户 -> 帖子”这类右键深入导航的最大历史层数；超过后会清空这条返回链，后续左键返回会直接回到左侧栏对应主界面。
 
-快捷键映射文件路径为 `~/.config/cc98-cli/keymap.toml`。格式参考 `keymap.toml`，组合键使用尖括号表示，例如：
+#### 可配置快捷键
+
+当前可配置快捷键都在 `~/.config/cc98-cli/keymap.toml` 的 `prepend_keymap` 里。格式参考 `keymap.toml`，组合键使用尖括号表示，例如：
 
 ```toml
 [tui]
 prepend_keymap = [
+  { on = "C", run = "compose.open", desc = "打开评论框或私信输入框" },
   { on = "F", run = "search.focus-input", desc = "跳到搜索框" },
   { on = "<A-Down>", run = "topic.next-reply", desc = "下一条回复" },
   { on = "<A-Up>", run = "topic.previous-reply", desc = "上一条回复" },
@@ -134,7 +136,35 @@ prepend_keymap = [
 ]
 ```
 
-默认已内置 `f` 用于跳到搜索界面的搜索框，`a` / `s` 用于在主题阅读模式下对当前楼层点赞、点踩，`d` 用于收藏或取消收藏当前帖子，`<A-Down>` / `<A-Up>` 用于跳转相邻回复，`<C-a>` 用于在评论框里打开表情面板。`prepend_keymap` 中的自定义绑定会优先于内置默认值。
+`prepend_keymap` 当前支持的 `run` 动作只有这些：
+
+- `compose.open`：打开评论框或私信输入框，默认内置按键：`c`
+- `search.focus-input`：跳到搜索页输入框，默认内置按键：`f`
+- `compose.open-emotion`：在评论框或私信输入框中打开表情面板，默认内置按键：`<C-a>`
+- `topic.next-reply`：在主题页跳到下一条回复，默认内置按键：`<A-Down>`
+- `topic.previous-reply`：在主题页跳到上一条回复，默认内置按键：`<A-Up>`
+- `topic.like-post`：在主题页给当前楼层点赞，默认内置按键：`a`
+- `topic.dislike-post`：在主题页给当前楼层点踩，默认内置按键：`s`
+- `topic.favorite-topic`：在主题页收藏或取消收藏当前帖子，默认内置按键：`d`
+
+`prepend_keymap` 中的自定义绑定会优先于内置默认值。
+
+`on` 字段支持：
+
+- 单字符键：`"a"`、`"F"`、`"/"`
+- 方向键：`"<Up>"`、`"<Down>"`、`"<Left>"`、`"<Right>"`
+- 常用控制键：`"<Enter>"`、`"<Esc>"`、`"<Tab>"`、`"<Space>"`、`"<Backspace>"`
+- Alt 键：`"<A-Up>"`、`"<A-Down>"`，也兼容 `"<M-Up>"`、`"<Alt-Up>"`、`"<Option-Up>"`
+- Ctrl 键：`"<C-a>"` 这类写法
+
+如果要写多段按键序列，也可以把 `on` 写成数组，例如：
+
+```toml
+[tui]
+prepend_keymap = [
+  { on = ["g", "g"], run = "search.focus-input", desc = "示例：双击 g" },
+]
+```
 
 ## CLI
 

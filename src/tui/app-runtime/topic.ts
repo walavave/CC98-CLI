@@ -9,7 +9,7 @@ import { leaveTopicMode, showNotification } from "./state.js";
 
 export function handleTopicMode(context: RuntimeContext, key: string, keyAction: string | undefined): void {
   const { state, render, client, config, nextSignal, abortCurrent } = context;
-  if (key === config.composeKey && !state.topic?.floorInput) {
+  if (keyAction === "compose.open" && !state.topic?.floorInput) {
     openComposeModal(context);
     return;
   }

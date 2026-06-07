@@ -15,7 +15,7 @@ import { handleFollowingContentFocus } from "./following.js";
 import { leaveContentMode } from "../state.js";
 import { handleSearchContentFocus } from "./search.js";
 
-export function handleContentFocus(context: RuntimeContext, key: string): void {
+export function handleContentFocus(context: RuntimeContext, key: string, keyAction: string | undefined): void {
   const { state, render, client, nextSignal, abortCurrent, load } = context;
   if (state.currentFollowing) {
     handleFollowingContentFocus(context, key);
@@ -73,7 +73,7 @@ export function handleContentFocus(context: RuntimeContext, key: string): void {
     void toggleCurrentUserFollow(context);
     return;
   }
-  if (key === context.config.composeKey && state.currentChat) {
+  if (keyAction === "compose.open" && state.currentChat) {
     openComposeModal(context);
     return;
   }

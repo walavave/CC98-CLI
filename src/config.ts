@@ -15,7 +15,6 @@ export interface TuiConfig {
   hideTopChrome: boolean;
   previewImages: boolean;
   navigationHistoryLimit: number;
-  composeKey: string;
   postSignature: string;
 }
 
@@ -27,7 +26,6 @@ const defaultConfig: AppConfig = {
     hideTopChrome: false,
     previewImages: true,
     navigationHistoryLimit: 10,
-    composeKey: "c",
     postSignature: "[right][color=#808080]——来自终端应用[/color]「[b][url=https://github.com/walavave/CC98-CLI]CC98 CLI[/url][/b]」[/right]"
   }
 };
@@ -61,7 +59,6 @@ function mergeConfig(base: AppConfig, parsed: Record<string, Record<string, unkn
       hideTopChrome: booleanValue(tui.hide_top_chrome, base.tui.hideTopChrome),
       previewImages: booleanValue(tui.preview_images, base.tui.previewImages),
       navigationHistoryLimit: positiveIntegerValue(tui.navigation_history_limit, base.tui.navigationHistoryLimit),
-      composeKey: singleKeyValue(tui.compose_key, base.tui.composeKey),
       postSignature: stringValue(tui.post_signature, base.tui.postSignature)
     }
   };
@@ -69,10 +66,6 @@ function mergeConfig(base: AppConfig, parsed: Record<string, Record<string, unkn
 
 function booleanValue(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
-}
-
-function singleKeyValue(value: unknown, fallback: string): string {
-  return typeof value === "string" && value.length === 1 ? value : fallback;
 }
 
 function stringValue(value: unknown, fallback: string): string {
