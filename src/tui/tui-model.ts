@@ -24,6 +24,7 @@ export interface ContentItem {
   meta?: string;
   detail?: string;
   action?: string;
+  unread?: boolean;
   unreadCount?: number;
   topicId?: number;
   boardId?: number;
@@ -53,6 +54,7 @@ export interface TuiState {
     messageCount: number;
     notificationCount: number;
   };
+  messageUnreadByUserId: Record<number, number>;
   error?: string;
   account?: string;
   viewTitle: string;

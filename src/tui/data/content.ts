@@ -56,6 +56,7 @@ export async function openChat(
   signal?: AbortSignal,
   pushParent = true
 ): Promise<void> {
+  markChatReadLocally(state, userId);
   prepareListView(state, {
     title,
     status: "正在读取私信...",
@@ -87,6 +88,32 @@ export async function openChat(
     state.loading = false;
     render();
   }
+}
+
+function markChatReadLocally(state: TuiState, userId: number): void {
+  const unreadCount = state.messageUnreadByUserId[userId] ?? 0;
+  if (unreadCount <= 0) {
+    return;
+  }
+
+  state.messageUnreadByUserId[userId] = 0;
+  if (state.unreadSummary) {
+    state.unreadSummary = {
+      ...state.unreadSummary,
+      messageCount: Math.max(0, state.unreadSummary.messageCount - unreadCount)
+    };
+  }
+
+  state.items = state.items.map((item) => {
+    if (item.chatUserId !== userId) {
+      return item;
+    }
+    return {
+      ...item,
+      unread: false,
+      unreadCount: 0
+    };
+  });
 }
 
 export async function openNoticeList(
@@ -282,6 +309,9 @@ export async function loadNextFeedPage(
   try {
     const { items: nextItems, received } = await loadFeedPageItems(client, feed, false, signal);
     state.items = [...state.items, ...nextItems];
+    if (feed.kind === "messages") {
+      applyMessageUnreadState(state);
+    }
     feed.loaded += nextItems.length;
     feed.hasMore = received > feed.size;
     state.status = describeFeedStatus(feed);
@@ -310,6 +340,25 @@ function noticeFeedKind(type: NoticeType): NonNullable<TuiState["currentFeed"]>[
     case "reply":
       return "notifications-reply";
   }
+}
+
+function applyMessageUnreadState(state: TuiState): void {
+  const nextCounts = { ...state.messageUnreadByUserId };
+  state.items = state.items.map((item) => {
+    if (item.chatUserId === undefined) {
+      return item;
+    }
+    const currentUnread = item.unreadCount ?? (item.unread ? 1 : 0);
+    const previousUnread = nextCounts[item.chatUserId];
+    const unreadCount = previousUnread === 0 ? 0 : Math.max(currentUnread, previousUnread ?? 0);
+    nextCounts[item.chatUserId] = unreadCount;
+    return {
+      ...item,
+      unread: unreadCount > 0,
+      unreadCount
+    };
+  });
+  state.messageUnreadByUserId = nextCounts;
 }
 
 function noticeListTitle(type: NoticeType): string {

@@ -47,6 +47,7 @@ export async function runTui(): Promise<void> {
     loadingMore: false,
     status: "",
     unreadSummary: undefined,
+    messageUnreadByUserId: {},
     viewTitle: "十大",
     items: [],
     overview: [],
@@ -130,6 +131,9 @@ export async function runTui(): Promise<void> {
           state.unreadSummary = { messageCount, notificationCount };
           state.viewTitle = next.title;
           state.items = next.items;
+          if (next.feed?.kind === "messages") {
+            syncMessageUnreadState(state);
+          }
           if (next.overview) {
             state.overview = next.overview;
           }
@@ -210,6 +214,25 @@ export async function runTui(): Promise<void> {
       process.exit(0);
     }
   }
+}
+
+function syncMessageUnreadState(state: TuiState): void {
+  const nextCounts: Record<number, number> = { ...state.messageUnreadByUserId };
+  state.items = state.items.map((item) => {
+    if (item.chatUserId === undefined) {
+      return item;
+    }
+    const knownUnread = item.unreadCount ?? (item.unread ? 1 : 0);
+    const previous = nextCounts[item.chatUserId];
+    const unreadCount = previous === 0 ? 0 : Math.max(knownUnread, previous ?? 0);
+    nextCounts[item.chatUserId] = unreadCount;
+    return {
+      ...item,
+      unread: unreadCount > 0,
+      unreadCount
+    };
+  });
+  state.messageUnreadByUserId = nextCounts;
 }
 
 function getWebVpnOptions(config: Awaited<ReturnType<VpnStore["getConfig"]>>): WebVpnOptions | undefined {

@@ -12,13 +12,36 @@ export async function loadChatUserNames(
   const ids = chats
     .map((chat) => asNumber(asObject(chat).userId ?? asObject(chat).UserId))
     .filter((id): id is number => id !== undefined);
-  const users = asArray(await client.getBasicUsers(ids, force, signal));
-  return new Map(users.map((userRaw) => {
-    const user = asObject(userRaw);
-    const id = asNumber(user.id ?? user.Id);
-    const name = String(user.name ?? user.Name ?? (id !== undefined ? `#${id}` : "用户"));
-    return [id, name] as const;
-  }).filter((entry): entry is readonly [number, string] => entry[0] !== undefined));
+  const uniqueIds = [...new Set(ids)];
+  const userNames = new Map<number, string>();
+
+  try {
+    const users = asArray(await client.getBasicUsers(uniqueIds, force, signal));
+    for (const userRaw of users) {
+      const user = asObject(userRaw);
+      const id = asNumber(user.id ?? user.Id);
+      if (id === undefined) {
+        continue;
+      }
+      userNames.set(id, String(user.name ?? user.Name ?? `#${id}`));
+    }
+  } catch {
+    // Fall through to per-user resolution below.
+  }
+
+  const missingIds = uniqueIds.filter((id) => !userNames.has(id));
+  await mapLimit(missingIds, 3, async (id) => {
+    try {
+      const users = asArray(await client.getBasicUsers([id], force, signal));
+      const user = asObject(users[0]);
+      const resolvedId = asNumber(user.id ?? user.Id) ?? id;
+      userNames.set(resolvedId, String(user.name ?? user.Name ?? `#${resolvedId}`));
+    } catch {
+      userNames.set(id, `ID不存在 #${id}`);
+    }
+  });
+
+  return userNames;
 }
 
 export async function loadChatUnreadCounts(
@@ -27,20 +50,27 @@ export async function loadChatUnreadCounts(
   force: boolean,
   signal?: AbortSignal
 ): Promise<Map<number, number>> {
-  const unreadChats = chats
-    .map((chatRaw) => asObject(chatRaw))
-    .filter((chat) => (chat.isRead ?? chat.IsRead) === false)
+  const candidates = chats
+    .map((chat) => asObject(chat))
     .map((chat) => asNumber(chat.userId ?? chat.UserId))
     .filter((id): id is number => id !== undefined);
+
   const counts = new Map<number, number>();
-  await mapLimit(unreadChats, 3, async (userId) => {
-    const messages = asArray(await client.getChatHistory(userId, 0, 30, force, signal));
-    const unreadCount = messages.reduce<number>((total, messageRaw) => {
-      const message = asObject(messageRaw);
-      return total + ((message.isRead ?? message.IsRead) === false ? 1 : 0);
-    }, 0);
-    counts.set(userId, unreadCount);
+  await mapLimit([...new Set(candidates)], 3, async (userId) => {
+    try {
+      const messages = asArray(await client.getChatHistory(userId, 0, 30, force, signal));
+      const unreadCount = messages.reduce<number>((total, messageRaw) => {
+        const message = asObject(messageRaw);
+        const senderId = asNumber(message.senderId ?? message.SenderId);
+        const isRead = message.isRead ?? message.IsRead;
+        return total + (senderId === userId && isRead === false ? 1 : 0);
+      }, 0);
+      counts.set(userId, unreadCount);
+    } catch {
+      counts.set(userId, 0);
+    }
   });
+
   return counts;
 }
 
@@ -48,14 +78,22 @@ export function chatItem(value: unknown, userNames: Map<number, string>, unreadC
   const chat = asObject(value);
   const userId = asNumber(chat.userId ?? chat.UserId);
   const name = userId !== undefined ? userNames.get(userId) : undefined;
-  const unreadCount = userId !== undefined ? unreadCounts?.get(userId) ?? 0 : 0;
+  const unreadCount = userId !== undefined
+    ? unreadCounts?.get(userId) ?? extractChatUnreadCount(chat)
+    : extractChatUnreadCount(chat);
+  const unread = unreadCount > 0;
   return {
     title: String(name ?? chat.name ?? chat.userName ?? userId ?? "私信"),
     meta: userId !== undefined ? `user #${userId}` : undefined,
     detail: normalizePreview(String(chat.lastContent ?? chat.lastMessage ?? chat.content ?? "")),
     chatUserId: userId,
-    unreadCount: unreadCount > 0 ? unreadCount : undefined
+    unread,
+    unreadCount
   };
+}
+
+export function hasUnreadChatItem(items: ContentItem[]): boolean {
+  return items.some((item) => item.chatUserId !== undefined && (item.unread || (item.unreadCount ?? 0) > 0));
 }
 
 export function chatMessageItems(messages: unknown[], otherName: string, otherUserId: number): ContentItem[] {
@@ -73,6 +111,21 @@ export function chatMessageItems(messages: unknown[], otherName: string, otherUs
       detail: content || "(空消息)"
     };
   });
+}
+
+function extractChatUnreadCount(chat: Record<string, unknown>): number {
+  const rawCount = asNumber(
+    chat.unreadCount
+    ?? chat.UnreadCount
+    ?? chat.messageCount
+    ?? chat.MessageCount
+    ?? chat.count
+    ?? chat.Count
+  );
+  if (rawCount !== undefined && rawCount > 0) {
+    return rawCount;
+  }
+  return (chat.isRead ?? chat.IsRead) === false ? 1 : 0;
 }
 
 export function buildUserProfileItems(profile: Record<string, unknown>): ContentItem[] {
@@ -106,9 +159,10 @@ export function describeUserProfileStatus(state: TuiState): string {
       : "个人主页：Esc/Backspace 返回";
   }
   const action = state.currentUser?.isFollowed ? "a 取关" : "a 关注";
+  const messageAction = "s 私信";
   return state.currentUser?.hasMore
-    ? `用户页：${action}  n/Space 更多主题  Esc/Backspace 返回`
-    : `用户页：${action}  Esc/Backspace 返回`;
+    ? `用户页：${action}  ${messageAction}  n/Space 更多主题  Esc/Backspace 返回`
+    : `用户页：${action}  ${messageAction}  Esc/Backspace 返回`;
 }
 
 export function unreadStats(value: Record<string, unknown>): ContentItem[] {
@@ -232,8 +286,7 @@ export async function loadFeedPageItems(
       const chats = asArray(await client.getRecentChats(feed.loaded, feed.size + 1, force, signal));
       const visibleChats = chats.slice(0, feed.size);
       const userNames = await loadChatUserNames(client, visibleChats, force, signal);
-      const unreadCounts = await loadChatUnreadCounts(client, visibleChats, force, signal);
-      return { items: visibleChats.map((chat) => chatItem(chat, userNames, unreadCounts)), received: chats.length };
+      return { items: visibleChats.map((chat) => chatItem(chat, userNames)), received: chats.length };
     }
     case "me-favorites": {
       const topics = asArray(await client.getFavoriteTopics(feed.loaded, feed.size + 1, 1, 0, force, signal));

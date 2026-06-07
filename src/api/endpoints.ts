@@ -28,7 +28,7 @@ export const endpoints = {
     recentChats: (from = 0, size = 10) => `${base}/message/recent-contact-users?from=${from}&size=${size}`,
     chatHistory: (userId: number, from = 0, size = 10) =>
       `${base}/message/user/${userId}?from=${from}&size=${size}`,
-    sendMessage: (userId: number) => `${base}/message/user/${userId}`,
+    sendMessage: `${base}/message`,
     search: (name: string) => `${base}/user/name/${encodeURIComponent(name)}`,
     unread: `${base}/me/unread-count`,
     notices: (type: "system" | "at" | "reply", from = 0, size = 10) =>

@@ -65,6 +65,10 @@ export function handleContentFocus(context: RuntimeContext, key: string): void {
     void loadNextFeedPage(client, state, render, nextSignal());
     return;
   }
+  if (key === "s" && state.currentUser && state.currentFeed?.kind !== "me-profile") {
+    void openChat(client, state, state.currentUser.userId, state.currentUser.title, render, false, nextSignal());
+    return;
+  }
   if (key === "a" && state.currentUser) {
     void toggleCurrentUserFollow(context);
     return;

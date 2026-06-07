@@ -288,7 +288,8 @@ function drawMain(state: TuiState, width: number, height: number): TopicDrawResu
     const active = index === state.itemIndex && (state.focus === "content" || state.mode === "settings");
     const marker = active ? theme.marker.selected : theme.marker.normal;
     const title = fit(` ${marker} ${renderListItemTitle(itemValue, inlineDetail)}`, width);
-    rows.push(active ? selectedLine(title, width, state.focus === "content" || state.mode === "settings") : textStyle.muted(title));
+    const isUnread = Boolean(itemValue.unread || ((itemValue.unreadCount ?? 0) > 0));
+    rows.push(renderListTitleRow(title, width, active, state.focus === "content" || state.mode === "settings", isUnread));
 
     if (itemValue.meta) {
       rows.push(fit(textStyle.muted(`  ${itemValue.meta}`), width));
@@ -328,6 +329,25 @@ function renderListItemTitle(itemValue: { title: string; detail?: string; unread
     return base;
   }
   return `${base} ${textStyle.noticeBold(`(${itemValue.unreadCount})`)}`;
+}
+
+function renderListTitleRow(
+  title: string,
+  width: number,
+  active: boolean,
+  focused: boolean,
+  isUnread: boolean
+): string {
+  if (active) {
+    if (isUnread) {
+      return styled(fit(title, width), `${theme.color.selectedBg}${theme.color.notice}${ansi.bold}`);
+    }
+    return selectedLine(title, width, focused);
+  }
+  if (isUnread) {
+    return textStyle.noticeBold(title);
+  }
+  return textStyle.muted(title);
 }
 
 function getListItemHeight(

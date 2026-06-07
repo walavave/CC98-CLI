@@ -174,7 +174,7 @@ export class Cc98Client {
   }
 
   async sendMessage(userId: number, content: string): Promise<unknown> {
-    return this.request<unknown>(endpoints.user.sendMessage(userId), {
+    return this.request<unknown>(endpoints.user.sendMessage, {
       method: "POST",
       headers: {
         "content-type": "application/json"

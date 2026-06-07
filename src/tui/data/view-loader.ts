@@ -7,6 +7,7 @@ import { asArray, asObject } from "./utils.js";
 import {
   chatItem,
   flattenBoards,
+  hasUnreadChatItem,
   loadChatUnreadCounts,
   loadChatUserNames,
   notificationCategoryItems,
@@ -134,14 +135,19 @@ export async function loadView(
     }
     case "messages": {
       const size = 10;
-      const recent = await client.getRecentChats(0, size + 1, force, signal);
+      const unread = asObject(await client.getUnreadCount(force, signal));
+      const hasUnreadMessages = typeof unread.messageCount === "number" && unread.messageCount > 0;
+      const recent = await client.getRecentChats(0, size + 1, force || hasUnreadMessages, signal);
       const chats = asArray(recent);
       const visibleChats = chats.slice(0, size);
       const userNames = await loadChatUserNames(client, chats, force, signal);
-      const unreadCounts = await loadChatUnreadCounts(client, visibleChats, force, signal);
-      const chatItems = visibleChats.length > 0
-        ? visibleChats.map((chat) => chatItem(chat, userNames, unreadCounts))
+      let chatItems = visibleChats.length > 0
+        ? visibleChats.map((chat) => chatItem(chat, userNames))
         : [{ title: "暂无最近私信", meta: "recent-contact-users" }];
+      if (hasUnreadMessages && !hasUnreadChatItem(chatItems)) {
+        const unreadCounts = await loadChatUnreadCounts(client, visibleChats, force, signal);
+        chatItems = visibleChats.map((chat) => chatItem(chat, userNames, unreadCounts));
+      }
       return {
         title: "消息",
         items: chatItems,
