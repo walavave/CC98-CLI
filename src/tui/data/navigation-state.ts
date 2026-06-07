@@ -1,4 +1,5 @@
 import {
+  type FollowingListState,
   type ListSnapshot,
   type SearchListState,
   type TopicReaderState,
@@ -18,6 +19,17 @@ export function createSearchState(board?: SearchListState["board"]): SearchListS
     hasMore: false,
     searched: false,
     focus: "input"
+  };
+}
+
+export function createFollowingState(): FollowingListState {
+  return {
+    title: "关注",
+    kind: "board",
+    loaded: 0,
+    size: 12,
+    hasMore: false,
+    focus: "tabs"
   };
 }
 
@@ -65,6 +77,7 @@ export function prepareListView(
   state.currentChat = options.currentChat;
   state.currentUser = options.currentUser;
   state.currentSearch = undefined;
+  state.currentFollowing = undefined;
   state.viewTitle = options.title;
   state.items = [];
   state.status = options.status;
@@ -100,6 +113,7 @@ function snapshotCurrentList(state: TuiState): ListSnapshot {
     currentFeed: state.currentFeed,
     currentChat: state.currentChat,
     currentSearch: state.currentSearch,
+    currentFollowing: state.currentFollowing,
     currentUser: state.currentUser
   };
 }
@@ -116,6 +130,7 @@ function applyListSnapshot(state: TuiState, snapshot: ListSnapshot): void {
   state.currentFeed = snapshot.currentFeed;
   state.currentChat = snapshot.currentChat;
   state.currentSearch = snapshot.currentSearch;
+  state.currentFollowing = snapshot.currentFollowing;
   state.currentUser = snapshot.currentUser;
   state.viewTitle = snapshot.title;
   state.items = snapshot.items;
@@ -148,6 +163,7 @@ function applyTopicSnapshot(
   state.currentChat = snapshot.list.currentChat;
   state.currentUser = snapshot.list.currentUser;
   state.currentSearch = snapshot.list.currentSearch;
+  state.currentFollowing = snapshot.list.currentFollowing;
   state.viewTitle = snapshot.viewTitle;
   state.status = snapshot.status;
 }

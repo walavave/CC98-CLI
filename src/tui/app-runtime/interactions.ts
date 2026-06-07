@@ -5,6 +5,7 @@ import { cellWidth } from "../text.js";
 import { getStatus, navItems, settingsItems } from "../tui-model.js";
 import type { MouseEvent } from "../terminal.js";
 import type { RuntimeContext } from "./context.js";
+import { loadFollowingKind, switchFollowingKind } from "../data/following.js";
 import { switchSearchKind } from "../data/search.js";
 import { enterContentMode, showNotification } from "./state.js";
 
@@ -152,6 +153,36 @@ export function handleContentClick(
     return true;
   }
 
+  if (state.currentFollowing) {
+    const rowIndex = event.row - (mainArea.y + 1);
+    if (rowIndex === 0) {
+      const kind = getFollowingKindAtColumn(state.currentFollowing, event.column - (mainArea.x + 1));
+      if (kind) {
+        if (switchFollowingKind(state, kind)) {
+          render();
+          void loadFollowingKind(context.client, state, render, kind, false, context.nextSignal());
+        } else {
+          state.currentFollowing.focus = "tabs";
+          enterContentMode(state);
+          render();
+        }
+      }
+      return true;
+    }
+    if (rowIndex < 2) {
+      return true;
+    }
+    const itemIndex = getRenderedListItemIndexAtRow(state, mainArea.width, mainArea.height, rowIndex);
+    if (itemIndex === undefined) {
+      return true;
+    }
+    state.itemIndex = itemIndex;
+    state.currentFollowing.focus = "results";
+    enterContentMode(state);
+    render();
+    return true;
+  }
+
   const rowIndex = event.row - (mainArea.y + 1) - 2;
   if (rowIndex < 0) {
     return true;
@@ -259,5 +290,31 @@ function getSearchKindAtColumn(
     cursor = end + 1;
   }
 
+  return undefined;
+}
+
+function getFollowingKindAtColumn(
+  following: NonNullable<RuntimeContext["state"]["currentFollowing"]>,
+  zeroBasedColumn: number
+): "board" | "user" | "favorite" | undefined {
+  const tabs = [
+    { kind: "board" as const, label: "[版面]" },
+    { kind: "user" as const, label: "[用户]" },
+    { kind: "favorite" as const, label: "[收藏]" }
+  ];
+  const start = cellWidth(` ${following.title} `);
+  if (zeroBasedColumn < start) {
+    return undefined;
+  }
+
+  let cursor = start;
+  for (let index = 0; index < tabs.length; index += 1) {
+    const tab = tabs[index];
+    const end = cursor + cellWidth(tab.label);
+    if (zeroBasedColumn >= cursor && zeroBasedColumn < end) {
+      return tab.kind;
+    }
+    cursor = end + 1;
+  }
   return undefined;
 }

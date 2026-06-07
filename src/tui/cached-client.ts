@@ -115,6 +115,15 @@ export class CachedCc98Client {
     );
   }
 
+  getCustomBoardTopics(from = 0, size = 12, force = false, signal?: AbortSignal): Promise<unknown> {
+    return this.cache.getOrSet(
+      `user:custom-board-topic:${from}:${size}`,
+      30 * second,
+      () => this.client.getCustomBoardTopics(from, size, { signal }),
+      { force }
+    );
+  }
+
   getRecentChats(from = 0, size = 10, force = false, signal?: AbortSignal): Promise<unknown> {
     return this.cache.getOrSet(`message:recent:${from}:${size}`, 15 * second, () => this.client.getRecentChats(from, size, { signal }), { force });
   }

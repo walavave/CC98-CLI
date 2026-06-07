@@ -11,11 +11,16 @@ import { openTopic } from "../../data/topic.js";
 import type { RuntimeContext } from "../context.js";
 import { openSelectedMeItem, refreshCurrentMeView, toggleCurrentUserFollow } from "../me.js";
 import { openComposeModal } from "../modals.js";
+import { handleFollowingContentFocus } from "./following.js";
 import { leaveContentMode } from "../state.js";
 import { handleSearchContentFocus } from "./search.js";
 
 export function handleContentFocus(context: RuntimeContext, key: string): void {
   const { state, render, client, nextSignal, abortCurrent, load } = context;
+  if (state.currentFollowing) {
+    handleFollowingContentFocus(context, key);
+    return;
+  }
   if (state.currentSearch) {
     handleSearchContentFocus(context, key);
     return;

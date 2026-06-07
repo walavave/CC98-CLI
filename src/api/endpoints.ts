@@ -14,12 +14,13 @@ export const endpoints = {
   user: {
     me: `${base}/me`,
     profile: (userId: number) => `${base}/user/${userId}`,
-    follow: (userId: number) => `${base}/user/${userId}/follow`,
+    follow: (userId: number) => `${base}/me/followee/${userId}`,
     isFollowed: (userId: number) => `${base}/user/${userId}/isfollowed`,
     basic: (ids: number[]) => `${base}/user/basic?${ids.map((id) => `id=${id}`).join("&")}`,
     list: (ids: number[]) => `${base}/user?${ids.map((id) => `id=${id}`).join("&")}`,
     friendIds: (type: "follower" | "followee", from = 0, size = 10) =>
       `${base}/me/${type}?from=${from}&size=${size}`,
+    customBoardTopics: (from = 0, size = 20) => `${base}/me/custom-board/topic?from=${from}&size=${size}`,
     moment: (from = 0, size = 20) => `${base}/me/followee/topic?from=${from}&size=${size}&order=0`,
     favoriteUpdates: (from = 0, size = 20) => `${base}/topic/me/favorite?from=${from}&size=${size}&order=1`,
     favoriteGroups: `${base}/me/favorite-topic-group`,

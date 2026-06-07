@@ -218,15 +218,23 @@ function drawSidebar(state: TuiState, width: number, height: number): string[] {
 
     const active = index === state.navIndex;
     const focused = state.focus === "nav";
+    const hasUnread = (nav.id === "messages" && (state.unreadSummary?.messageCount ?? 0) > 0)
+      || (nav.id === "notifications" && (state.unreadSummary?.notificationCount ?? 0) > 0);
     const label = ` ${nav.label}`;
     const hint = width > 16 ? ` ${nav.hint}` : "";
     const text = fit(`${label}${hint}`, width);
     if (active && focused) {
-      rows.push(selectedLine(text, width, true));
+      rows.push(hasUnread
+        ? styled(fit(text, width), `${theme.color.selectedBg}${theme.color.notice}${ansi.bold}`)
+        : selectedLine(text, width, true));
     } else if (active) {
-      rows.push(selectedLine(text, width, true));
+      rows.push(hasUnread
+        ? styled(fit(text, width), `${theme.color.selectedBg}${theme.color.notice}${ansi.bold}`)
+        : selectedLine(text, width, true));
     } else {
-      rows.push(`${textStyle.primary(label)}${textStyle.muted(fit(hint, Math.max(0, width - cellWidth(label))))}`);
+      const labelStyle = hasUnread ? textStyle.noticeBold : textStyle.primary;
+      const hintStyle = hasUnread ? textStyle.notice : textStyle.muted;
+      rows.push(`${labelStyle(label)}${hintStyle(fit(hint, Math.max(0, width - cellWidth(label))))}`);
     }
   }
   return rows;
@@ -235,6 +243,10 @@ function drawSidebar(state: TuiState, width: number, height: number): string[] {
 function drawMain(state: TuiState, width: number, height: number): TopicDrawResult {
   if (state.mode === "topic") {
     return drawTopic(state, width, height);
+  }
+
+  if (state.currentFollowing) {
+    return drawFollowing(state, width, height);
   }
 
   if (state.currentSearch) {
@@ -275,7 +287,7 @@ function drawMain(state: TuiState, width: number, height: number): TopicDrawResu
     }
     const active = index === state.itemIndex && (state.focus === "content" || state.mode === "settings");
     const marker = active ? theme.marker.selected : theme.marker.normal;
-    const title = fit(` ${marker} ${listItemTitle(itemValue, inlineDetail)}`, width);
+    const title = fit(` ${marker} ${renderListItemTitle(itemValue, inlineDetail)}`, width);
     rows.push(active ? selectedLine(title, width, state.focus === "content" || state.mode === "settings") : textStyle.muted(title));
 
     if (itemValue.meta) {
@@ -308,6 +320,14 @@ function listItemTitle(itemValue: { title: string; detail?: string }, inlineDeta
     return itemValue.title;
   }
   return `${itemValue.title}  ${truncate(itemValue.detail, 80)}`;
+}
+
+function renderListItemTitle(itemValue: { title: string; detail?: string; unreadCount?: number }, inlineDetail: boolean): string {
+  const base = listItemTitle(itemValue, inlineDetail);
+  if (!itemValue.unreadCount || itemValue.unreadCount <= 0) {
+    return base;
+  }
+  return `${base} ${textStyle.noticeBold(`(${itemValue.unreadCount})`)}`;
 }
 
 function getListItemHeight(
@@ -433,7 +453,7 @@ function drawSearch(state: TuiState, width: number, height: number): TopicDrawRe
     }
     const active = index === state.itemIndex && state.focus === "content" && search.focus === "results";
     const marker = active ? theme.marker.selected : theme.marker.normal;
-    const title = fit(` ${marker} ${listItemTitle(itemValue, true)}`, width);
+    const title = fit(` ${marker} ${renderListItemTitle(itemValue, true)}`, width);
     rows.push(active ? selectedLine(title, width, true) : textStyle.muted(title));
     if (itemValue.meta) {
       rows.push(fit(textStyle.muted(`  ${itemValue.meta}`), width));
@@ -450,11 +470,67 @@ function drawSearch(state: TuiState, width: number, height: number): TopicDrawRe
   return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
 }
 
+function drawFollowing(state: TuiState, width: number, height: number): TopicDrawResult {
+  const following = state.currentFollowing;
+  if (!following) {
+    return { rows: blank(height, width), imageOverlays: [] };
+  }
+
+  const rows: string[] = [];
+  rows.push(drawFollowingHeader(state.viewTitle, following, width));
+  rows.push(ruleLine(Math.max(0, width - 1)));
+
+  if (state.loading) {
+    rows.push(fit(textStyle.muted(` 正在读取关注${followingTabLabel(following.kind)}...`), width));
+    return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
+  }
+
+  const contentHeight = Math.max(1, height - 2);
+  const scroll = getListScroll(state, contentHeight, width, false, true);
+  const visible = getVisibleItems(state.items, scroll, contentHeight, width, false, true);
+
+  if (visible.length === 0) {
+    rows.push(textStyle.muted(` 暂无关注${followingTabLabel(following.kind)}内容`));
+    return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
+  }
+
+  visible.forEach(({ item: itemValue, index }) => {
+    const itemHeight = getListItemHeight(itemValue, width, false, true);
+    if (rows.length + itemHeight > height) {
+      return;
+    }
+    const active = index === state.itemIndex && state.focus === "content" && following.focus === "results";
+    const marker = active ? theme.marker.selected : theme.marker.normal;
+    const title = fit(` ${marker} ${renderListItemTitle(itemValue, true)}`, width);
+    rows.push(active ? selectedLine(title, width, true) : textStyle.muted(title));
+    if (itemValue.meta) {
+      rows.push(fit(textStyle.muted(`  ${itemValue.meta}`), width));
+    }
+  });
+
+  const lastVisibleIndex = visible.at(-1)?.index ?? scroll - 1;
+  if (lastVisibleIndex < state.items.length - 1 && rows.length < height) {
+    rows.push(fit(textStyle.muted(`  ↓ 还有 ${state.items.length - lastVisibleIndex - 1} 项`), width));
+  } else if (following.hasMore && rows.length < height) {
+    rows.push(fit(textStyle.muted("  ↓ 到底自动继续加载，或按 n/Space"), width));
+  }
+
+  return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
+}
+
 function drawSearchHeader(title: string, search: NonNullable<TuiState["currentSearch"]>, width: number): string {
   const titleText = ` ${title}`;
   const tabs = searchKinds(search).map((entry) => drawSearchTab(searchTabLabel(entry, search), entry === search.kind));
   const tabsText = tabs.join(" ");
   return fit(`${textStyle.primaryBold(titleText)} ${tabsText}`, width);
+}
+
+function drawFollowingHeader(title: string, following: NonNullable<TuiState["currentFollowing"]>, width: number): string {
+  const titleText = ` ${title}`;
+  const tabs = ["board", "user", "favorite"].map((entry) =>
+    drawSearchTab(followingTabLabel(entry as NonNullable<TuiState["currentFollowing"]>["kind"]), entry === following.kind)
+  );
+  return fit(`${textStyle.primaryBold(titleText)} ${tabs.join(" ")}`, width);
 }
 
 function drawSearchTab(label: string, active: boolean): string {
@@ -466,6 +542,17 @@ function drawSearchTab(label: string, active: boolean): string {
 
 function searchKinds(search: NonNullable<TuiState["currentSearch"]>): NonNullable<TuiState["currentSearch"]>["kind"][] {
   return search.board ? ["topic", "board", "user", "board-topic"] : ["topic", "board", "user"];
+}
+
+function followingTabLabel(kind: NonNullable<TuiState["currentFollowing"]>["kind"]): string {
+  switch (kind) {
+    case "board":
+      return "版面";
+    case "user":
+      return "用户";
+    case "favorite":
+      return "收藏";
+  }
 }
 
 function searchTabLabel(kind: NonNullable<TuiState["currentSearch"]>["kind"], search?: NonNullable<TuiState["currentSearch"]>): string {

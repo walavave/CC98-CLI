@@ -4,12 +4,14 @@ import type {
   LoginFormState
 } from "./account-modal.js";
 
-export type ViewId = "hot" | "new" | "search" | "boards" | "following" | "favorite" | "notifications" | "messages" | "me" | "settings";
+export type ViewId = "hot" | "new" | "search" | "boards" | "following" | "notifications" | "messages" | "me" | "settings";
 export type FocusColumn = "nav" | "content";
 export type ModalType = "help" | "account" | "login" | "confirm" | "image" | "compose" | "emotion-picker" | null;
 export type SearchFocus = "tabs" | "input" | "results";
 export type SearchKind = "topic" | "board" | "user" | "board-topic";
 export type NoticeType = "system" | "at" | "reply";
+export type FollowingFocus = "tabs" | "results";
+export type FollowingKind = "board" | "user" | "favorite";
 
 export interface NavItem {
   id: ViewId;
@@ -22,6 +24,7 @@ export interface ContentItem {
   meta?: string;
   detail?: string;
   action?: string;
+  unreadCount?: number;
   topicId?: number;
   boardId?: number;
   boardTitle?: string;
@@ -46,6 +49,10 @@ export interface TuiState {
     message: string;
     expiresAt: number;
   };
+  unreadSummary?: {
+    messageCount: number;
+    notificationCount: number;
+  };
   error?: string;
   account?: string;
   viewTitle: string;
@@ -56,6 +63,7 @@ export interface TuiState {
   currentFeed?: FeedListState;
   currentChat?: ChatListState;
   currentSearch?: SearchListState;
+  currentFollowing?: FollowingListState;
   currentUser?: UserProfileListState;
   topic?: TopicReaderState;
   modal: ModalType;
@@ -75,6 +83,7 @@ export interface ListSnapshot {
   currentFeed?: FeedListState;
   currentChat?: ChatListState;
   currentSearch?: SearchListState;
+  currentFollowing?: FollowingListState;
   currentUser?: UserProfileListState;
 }
 
@@ -96,7 +105,7 @@ export interface BoardListState {
 }
 
 export interface FeedListState {
-  kind: "new" | "following" | "notifications-system" | "notifications-at" | "notifications-reply" | "messages" | "me-profile" | "me-favorites" | "me-replies" | "me-history" | "me-fans";
+  kind: "new" | "following-board" | "following-user" | "following-favorite" | "notifications-system" | "notifications-at" | "notifications-reply" | "messages" | "me-profile" | "me-favorites" | "me-replies" | "me-history" | "me-fans";
   title: string;
   loaded: number;
   size: number;
@@ -122,6 +131,15 @@ export interface SearchListState {
   hasMore: boolean;
   searched: boolean;
   focus: SearchFocus;
+}
+
+export interface FollowingListState {
+  title: string;
+  kind: FollowingKind;
+  loaded: number;
+  size: number;
+  hasMore: boolean;
+  focus: FollowingFocus;
 }
 
 export interface UserProfileListState {
@@ -210,11 +228,10 @@ export interface TopicLineEntry {
 
 export const navItems: NavItem[] = [
   { id: "hot", label: "十大", hint: "热门话题" },
-  { id: "favorite", label: "收藏", hint: "版面帖子" },
   { id: "new", label: "最新", hint: "新帖流" },
   { id: "search", label: "搜索", hint: "主题检索" },
   { id: "boards", label: "版面", hint: "所有分区" },
-  { id: "following", label: "关注", hint: "用户动态" },
+  { id: "following", label: "关注", hint: "版面用户收藏" },
   { id: "notifications", label: "通知", hint: "系统与回复" },
   { id: "messages", label: "消息", hint: "未读与私信" },
   { id: "me", label: "我的", hint: "当前账号" },
@@ -277,6 +294,12 @@ export function getStatus(state: TuiState): string {
       ? `${label}结果 ${state.items.length} 项，继续向下可加载更多`
       : `${label}结果 ${state.items.length} 项`;
   }
+  if (state.currentFollowing) {
+    const label = followingKindLabelForStatus(state.currentFollowing.kind);
+    return state.currentFollowing.hasMore
+      ? `关注${label} ${state.items.length} 项，继续向下可加载更多`
+      : `关注${label} ${state.items.length} 项`;
+  }
   return `${state.items.length} 项`;
 }
 
@@ -290,5 +313,16 @@ function searchKindLabelForStatus(search: SearchListState): string {
       return "用户";
     case "board-topic":
       return search.board ? `版内 ${search.board.title}` : "版内";
+  }
+}
+
+function followingKindLabelForStatus(kind: FollowingKind): string {
+  switch (kind) {
+    case "board":
+      return "版面";
+    case "user":
+      return "用户";
+    case "favorite":
+      return "收藏";
   }
 }

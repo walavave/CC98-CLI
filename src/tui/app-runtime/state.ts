@@ -17,6 +17,7 @@ export function leaveTopicMode(state: TuiState): void {
     ?? state.currentChat?.title
     ?? state.currentUser?.title
     ?? state.currentSearch?.title
+    ?? state.currentFollowing?.title
     ?? navItems[state.navIndex]?.label
     ?? state.viewTitle;
   state.status = getStatus(state);

@@ -145,6 +145,10 @@ export class Cc98Client {
     return this.request<unknown>(endpoints.user.friendIds(type, from, size), { signal: options.signal });
   }
 
+  async getCustomBoardTopics(from = 0, size = 20, options: RequestOptions = {}): Promise<unknown> {
+    return this.request<unknown>(endpoints.user.customBoardTopics(from, size), { signal: options.signal });
+  }
+
   async getMoment(from = 0, size = 20, options: RequestOptions = {}): Promise<unknown> {
     return this.request<unknown>(endpoints.user.moment(from, size), { signal: options.signal });
   }

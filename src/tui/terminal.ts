@@ -32,6 +32,7 @@ export class Terminal {
   private previousRawMode = false;
   private previousPaused = true;
   private previousHadImageOverlays = false;
+  private previousImageOverlaySignature = "";
   private inputBuffer = "";
   private pendingEscapeTimeout: ReturnType<typeof setTimeout> | undefined;
   private readonly keyHandlers = new Set<KeyHandler>();
@@ -76,21 +77,30 @@ export class Terminal {
 
   render(frame: string | TerminalFrame): void {
     const normalized = typeof frame === "string" ? { text: frame, imageOverlays: [] } : frame;
-    const hasImageOverlays = (normalized.imageOverlays?.length ?? 0) > 0;
-    if (this.previousHadImageOverlays || hasImageOverlays) {
+    const imageOverlays = normalized.imageOverlays ?? [];
+    const hasImageOverlays = imageOverlays.length > 0;
+    const nextImageOverlaySignature = imageOverlays
+      .map((overlay) => `${overlay.row}:${overlay.column}:${overlay.token}`)
+      .join("|");
+    const overlaysChanged = nextImageOverlaySignature !== this.previousImageOverlaySignature;
+
+    if ((this.previousHadImageOverlays || hasImageOverlays) && overlaysChanged) {
       const clearImages = getClearVisibleImageSequence();
       if (clearImages) {
         stdout.write(clearImages);
       }
     }
     stdout.write(`${ansi.home}${normalized.text}`);
-    for (const overlay of normalized.imageOverlays ?? []) {
-      const sequence = getImagePreviewSequence(overlay.token);
-      if (sequence) {
-        stdout.write(`${moveTo(overlay.row, overlay.column)}${sequence}`);
+    if (overlaysChanged) {
+      for (const overlay of imageOverlays) {
+        const sequence = getImagePreviewSequence(overlay.token);
+        if (sequence) {
+          stdout.write(`${moveTo(overlay.row, overlay.column)}${sequence}`);
+        }
       }
     }
     this.previousHadImageOverlays = hasImageOverlays;
+    this.previousImageOverlaySignature = nextImageOverlaySignature;
     stdout.write(ansi.home);
   }
 

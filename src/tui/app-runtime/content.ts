@@ -12,3 +12,7 @@ export {
   handleSearchContentFocus,
   isAtSearchEnd
 } from "./content/search.js";
+export {
+  handleFollowingContentFocus,
+  isAtFollowingEnd
+} from "./content/following.js";

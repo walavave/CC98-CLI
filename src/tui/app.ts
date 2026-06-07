@@ -46,6 +46,7 @@ export async function runTui(): Promise<void> {
     loading: true,
     loadingMore: false,
     status: "",
+    unreadSummary: undefined,
     viewTitle: "十大",
     items: [],
     overview: [],
@@ -55,6 +56,7 @@ export async function runTui(): Promise<void> {
     currentChat: undefined,
     currentUser: undefined,
     currentSearch: undefined,
+    currentFollowing: undefined,
     modal: null,
     accountModal: {
       accounts: [],
@@ -107,20 +109,32 @@ export async function runTui(): Promise<void> {
         state.currentChat = undefined;
         state.currentUser = undefined;
         state.currentSearch = nav.id === "search" ? createSearchState() : undefined;
+        state.currentFollowing = undefined;
         render();
 
         try {
           state.account = await tokenStore.getCurrentAccountName();
-          const next = await loadView(client, nav.id, force, signal);
+          const [next, unreadRaw] = await Promise.all([
+            loadView(client, nav.id, force, signal),
+            client.getUnreadCount(force, signal)
+          ]);
           if (closed || version !== loadVersion) {
             return;
           }
+          const unread = typeof unreadRaw === "object" && unreadRaw ? unreadRaw as Record<string, unknown> : {};
+          const messageCount = typeof unread.messageCount === "number" ? unread.messageCount : 0;
+          const notificationCount = ["systemCount", "atCount", "replyCount"].reduce((total, key) => {
+            const value = unread[key];
+            return total + (typeof value === "number" ? value : 0);
+          }, 0);
+          state.unreadSummary = { messageCount, notificationCount };
           state.viewTitle = next.title;
           state.items = next.items;
           if (next.overview) {
             state.overview = next.overview;
           }
           state.currentFeed = next.feed;
+          state.currentFollowing = next.following;
           state.status = next.status ?? getStatus(state);
         } catch (error) {
           if (error instanceof Error && error.name === "AbortError") {

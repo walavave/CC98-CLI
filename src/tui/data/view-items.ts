@@ -21,15 +21,40 @@ export async function loadChatUserNames(
   }).filter((entry): entry is readonly [number, string] => entry[0] !== undefined));
 }
 
-export function chatItem(value: unknown, userNames: Map<number, string>): ContentItem {
+export async function loadChatUnreadCounts(
+  client: CachedCc98Client,
+  chats: unknown[],
+  force: boolean,
+  signal?: AbortSignal
+): Promise<Map<number, number>> {
+  const unreadChats = chats
+    .map((chatRaw) => asObject(chatRaw))
+    .filter((chat) => (chat.isRead ?? chat.IsRead) === false)
+    .map((chat) => asNumber(chat.userId ?? chat.UserId))
+    .filter((id): id is number => id !== undefined);
+  const counts = new Map<number, number>();
+  await mapLimit(unreadChats, 3, async (userId) => {
+    const messages = asArray(await client.getChatHistory(userId, 0, 30, force, signal));
+    const unreadCount = messages.reduce<number>((total, messageRaw) => {
+      const message = asObject(messageRaw);
+      return total + ((message.isRead ?? message.IsRead) === false ? 1 : 0);
+    }, 0);
+    counts.set(userId, unreadCount);
+  });
+  return counts;
+}
+
+export function chatItem(value: unknown, userNames: Map<number, string>, unreadCounts?: Map<number, number>): ContentItem {
   const chat = asObject(value);
   const userId = asNumber(chat.userId ?? chat.UserId);
   const name = userId !== undefined ? userNames.get(userId) : undefined;
+  const unreadCount = userId !== undefined ? unreadCounts?.get(userId) ?? 0 : 0;
   return {
     title: String(name ?? chat.name ?? chat.userName ?? userId ?? "私信"),
     meta: userId !== undefined ? `user #${userId}` : undefined,
     detail: normalizePreview(String(chat.lastContent ?? chat.lastMessage ?? chat.content ?? "")),
-    chatUserId: userId
+    chatUserId: userId,
+    unreadCount: unreadCount > 0 ? unreadCount : undefined
   };
 }
 
@@ -77,13 +102,13 @@ export function buildUserProfileItems(profile: Record<string, unknown>): Content
 export function describeUserProfileStatus(state: TuiState): string {
   if (state.currentFeed?.kind === "me-profile") {
     return state.currentUser?.hasMore
-      ? "个人主页：j/k 浏览  l 打开主题  n/Space 更多主题  Esc/Backspace 返回"
-      : "个人主页：j/k 浏览  l 打开主题  Esc/Backspace 返回";
+      ? "个人主页：n/Space 更多主题  Esc/Backspace 返回"
+      : "个人主页：Esc/Backspace 返回";
   }
   const action = state.currentUser?.isFollowed ? "a 取关" : "a 关注";
   return state.currentUser?.hasMore
-    ? `用户页：j/k 浏览  l 打开主题  ${action}  n/Space 更多主题  Esc/Backspace 返回`
-    : `用户页：j/k 浏览  l 打开主题  ${action}  Esc/Backspace 返回`;
+    ? `用户页：${action}  n/Space 更多主题  Esc/Backspace 返回`
+    : `用户页：${action}  Esc/Backspace 返回`;
 }
 
 export function unreadStats(value: Record<string, unknown>): ContentItem[] {
@@ -179,8 +204,16 @@ export async function loadFeedPageItems(
       const topics = asArray(await client.getNewTopics(feed.loaded, feed.size + 1, force, signal));
       return { items: topics.slice(0, feed.size).map((topic) => topicItem(topic)), received: topics.length };
     }
-    case "following": {
+    case "following-board": {
+      const topics = asArray(await client.getCustomBoardTopics(feed.loaded, feed.size + 1, force, signal));
+      return { items: topics.slice(0, feed.size).map((topic) => topicItem(topic)), received: topics.length };
+    }
+    case "following-user": {
       const topics = asArray(await client.getFolloweeTopics(feed.loaded, feed.size + 1, force, signal));
+      return { items: topics.slice(0, feed.size).map((topic) => topicItem(topic)), received: topics.length };
+    }
+    case "following-favorite": {
+      const topics = asArray(await client.getFavoriteUpdates(feed.loaded, feed.size + 1, force, signal));
       return { items: topics.slice(0, feed.size).map((topic) => topicItem(topic)), received: topics.length };
     }
     case "notifications-system": {
@@ -199,7 +232,8 @@ export async function loadFeedPageItems(
       const chats = asArray(await client.getRecentChats(feed.loaded, feed.size + 1, force, signal));
       const visibleChats = chats.slice(0, feed.size);
       const userNames = await loadChatUserNames(client, visibleChats, force, signal);
-      return { items: visibleChats.map((chat) => chatItem(chat, userNames)), received: chats.length };
+      const unreadCounts = await loadChatUnreadCounts(client, visibleChats, force, signal);
+      return { items: visibleChats.map((chat) => chatItem(chat, userNames, unreadCounts)), received: chats.length };
     }
     case "me-favorites": {
       const topics = asArray(await client.getFavoriteTopics(feed.loaded, feed.size + 1, 1, 0, force, signal));
