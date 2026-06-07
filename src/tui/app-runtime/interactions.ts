@@ -1,9 +1,11 @@
 import { downloadUrlToDownloads } from "../downloads.js";
 import { fill, length, pad, rect, split } from "../layout.js";
 import { getRenderedListItemIndexAtRow, getRenderedSearchItemIndexAtRow, getSidebarWidth } from "../renderer.js";
+import { cellWidth } from "../text.js";
 import { getStatus, navItems, settingsItems } from "../tui-model.js";
 import type { MouseEvent } from "../terminal.js";
 import type { RuntimeContext } from "./context.js";
+import { switchSearchKind } from "../data/search.js";
 import { enterContentMode, showNotification } from "./state.js";
 
 export async function handleTopicClick(
@@ -121,6 +123,15 @@ export function handleContentClick(
 
   if (state.currentSearch) {
     const rowIndex = event.row - (mainArea.y + 1);
+    if (rowIndex === 0) {
+      const kind = getSearchKindAtColumn(state.currentSearch, event.column - (mainArea.x + 1));
+      if (kind) {
+        switchSearchKind(state, kind);
+        enterContentMode(state);
+        render();
+      }
+      return true;
+    }
     if (rowIndex === 1) {
       state.currentSearch.focus = "input";
       enterContentMode(state);
@@ -221,4 +232,32 @@ function shortUrl(value: string): string {
   } catch {
     return value;
   }
+}
+
+function getSearchKindAtColumn(
+  search: NonNullable<RuntimeContext["state"]["currentSearch"]>,
+  zeroBasedColumn: number
+): "topic" | "board" | "user" | "board-topic" | undefined {
+  const tabs = [
+    { kind: "topic" as const, label: "[主题]" },
+    { kind: "board" as const, label: "[版面]" },
+    { kind: "user" as const, label: "[用户]" },
+    ...(search.board ? [{ kind: "board-topic" as const, label: `[版内：${search.board.title}]` }] : [])
+  ];
+  const start = cellWidth(` ${search.title} `);
+  if (zeroBasedColumn < start) {
+    return undefined;
+  }
+
+  let cursor = start;
+  for (let index = 0; index < tabs.length; index += 1) {
+    const tab = tabs[index];
+    const end = cursor + cellWidth(tab.label);
+    if (zeroBasedColumn >= cursor && zeroBasedColumn < end) {
+      return tab.kind;
+    }
+    cursor = end + 1;
+  }
+
+  return undefined;
 }

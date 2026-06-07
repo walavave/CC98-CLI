@@ -1,6 +1,6 @@
 import { basicUserItem, historyTopicItem, recentPostItem, topicItem } from "./items.js";
-import { asArray, asNumber, asObject, formatTime, normalizeInlineText, normalizePreview } from "./utils.js";
-import type { ContentItem, TuiState } from "../tui-model.js";
+import { asArray, asNumber, asObject, formatTime, normalizeInlineText, normalizePreview, timestampOf } from "./utils.js";
+import type { ContentItem, NoticeType, TuiState } from "../tui-model.js";
 import { CachedCc98Client } from "../cached-client.js";
 
 export async function loadChatUserNames(
@@ -95,6 +95,25 @@ export function unreadStats(value: Record<string, unknown>): ContentItem[] {
   ];
 }
 
+export function notificationCategoryItems(value: Record<string, unknown>): ContentItem[] {
+  return [
+    noticeCategoryItem("reply", "回复通知", value.replyCount, "别人回复了你的主题或帖子"),
+    noticeCategoryItem("at", "@通知", value.atCount, "别人提到了你"),
+    noticeCategoryItem("system", "系统通知", value.systemCount, "系统公告和个人系统消息")
+  ];
+}
+
+export function noticeItems(type: NoticeType, values: unknown[]): ContentItem[] {
+  switch (type) {
+    case "reply":
+      return values.map((value) => replyNoticeItem(value));
+    case "at":
+      return values.map((value) => atNoticeItem(value));
+    case "system":
+      return values.map((value) => systemNoticeItem(value));
+  }
+}
+
 export function overviewStats(index: Record<string, unknown>, unread: Record<string, unknown>): ContentItem[] {
   const unreadTotal = ["systemCount", "atCount", "replyCount", "messageCount"].reduce((total, key) => {
     const value = unread[key];
@@ -164,6 +183,18 @@ export async function loadFeedPageItems(
       const topics = asArray(await client.getFolloweeTopics(feed.loaded, feed.size + 1, force, signal));
       return { items: topics.slice(0, feed.size).map((topic) => topicItem(topic)), received: topics.length };
     }
+    case "notifications-system": {
+      const notices = asArray(await client.getNotices("system", feed.loaded, feed.size + 1, force, signal));
+      return { items: noticeItems("system", notices.slice(0, feed.size)), received: notices.length };
+    }
+    case "notifications-at": {
+      const notices = asArray(await client.getNotices("at", feed.loaded, feed.size + 1, force, signal));
+      return { items: noticeItems("at", notices.slice(0, feed.size)), received: notices.length };
+    }
+    case "notifications-reply": {
+      const notices = asArray(await client.getNotices("reply", feed.loaded, feed.size + 1, force, signal));
+      return { items: noticeItems("reply", notices.slice(0, feed.size)), received: notices.length };
+    }
     case "messages": {
       const chats = asArray(await client.getRecentChats(feed.loaded, feed.size + 1, force, signal));
       const visibleChats = chats.slice(0, feed.size);
@@ -198,5 +229,91 @@ function item(title: string, value: unknown, meta?: string): ContentItem {
     title,
     meta,
     detail: value === undefined || value === null ? "-" : String(value)
+  };
+}
+
+function noticeCategoryItem(type: NoticeType, title: string, unread: unknown, detail: string): ContentItem {
+  const count = typeof unread === "number" ? unread : Number(unread ?? 0);
+  return {
+    title,
+    meta: count > 0 ? `${count} 条未读` : "已读完",
+    detail,
+    action: `notice.${type}`
+  };
+}
+
+function replyNoticeItem(value: unknown): ContentItem {
+  const notice = asObject(value);
+  const topicId = asNumber(notice.topicId ?? notice.TopicId);
+  const boardId = asNumber(notice.boardId ?? notice.BoardId);
+  const userId = asNumber(notice.userId ?? notice.UserId);
+  const boardTitle = normalizeInlineText(String(notice.boardName ?? notice.BoardName ?? "")).trim();
+  const userName = normalizeInlineText(String(notice.userName ?? notice.UserName ?? "")).trim() || "有人";
+  const topicTitle = normalizeInlineText(String(notice.topicTitle ?? notice.TopicTitle ?? `#${topicId ?? ""}`)).trim();
+  const floor = asNumber(notice.floor ?? notice.Floor);
+
+  return {
+    title: topicTitle || `${userName} 回复了你`,
+    meta: [
+      "回复通知",
+      userName,
+      boardTitle || undefined,
+      floor !== undefined ? `#${floor} 楼` : undefined,
+      formatTime(notice.time ?? notice.Time)
+    ].filter(Boolean).join(" · "),
+    detail: `${userName} 回复了你`,
+    topicId,
+    boardId,
+    boardTitle: boardTitle || undefined,
+    userId,
+    sortTime: timestampOf(notice.time ?? notice.Time)
+  };
+}
+
+function atNoticeItem(value: unknown): ContentItem {
+  const notice = asObject(value);
+  const topicId = asNumber(notice.topicId ?? notice.TopicId);
+  const boardId = asNumber(notice.boardId ?? notice.BoardId);
+  const userId = asNumber(notice.userId ?? notice.UserId);
+  const boardTitle = normalizeInlineText(String(notice.boardName ?? notice.BoardName ?? "")).trim();
+  const userName = normalizeInlineText(String(notice.userName ?? notice.UserName ?? "")).trim() || "有人";
+  const topicTitle = normalizeInlineText(String(notice.topicTitle ?? notice.TopicTitle ?? `#${topicId ?? ""}`)).trim();
+  const floor = asNumber(notice.floor ?? notice.Floor);
+
+  return {
+    title: topicTitle || `${userName} @了你`,
+    meta: [
+      "@通知",
+      userName,
+      boardTitle || undefined,
+      floor !== undefined ? `#${floor} 楼` : undefined,
+      formatTime(notice.time ?? notice.Time)
+    ].filter(Boolean).join(" · "),
+    detail: `${userName} 在帖子里提到了你`,
+    topicId,
+    boardId,
+    boardTitle: boardTitle || undefined,
+    userId,
+    sortTime: timestampOf(notice.time ?? notice.Time)
+  };
+}
+
+function systemNoticeItem(value: unknown): ContentItem {
+  const notice = asObject(value);
+  const topicId = asNumber(notice.topicId ?? notice.TopicId);
+  const title = normalizeInlineText(String(notice.title ?? notice.Title ?? "系统通知")).trim() || "系统通知";
+  const content = normalizePreview(String(notice.content ?? notice.Content ?? ""));
+  const floor = asNumber(notice.floor ?? notice.Floor);
+
+  return {
+    title,
+    meta: [
+      "系统通知",
+      floor !== undefined ? `#${floor} 楼` : undefined,
+      formatTime(notice.time ?? notice.Time)
+    ].filter(Boolean).join(" · "),
+    detail: content || "查看系统通知详情",
+    topicId,
+    sortTime: timestampOf(notice.time ?? notice.Time)
   };
 }

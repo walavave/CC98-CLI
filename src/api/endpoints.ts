@@ -36,6 +36,7 @@ export const endpoints = {
   },
   board: {
     info: (boardId: number) => `${base}/board/${boardId}`,
+    search: (keyword: string) => `${base}/board/search?keyword=${encodeURIComponent(keyword)}`,
     topics: (boardId: number, from = 0, size = 20) =>
       `${base}/board/${boardId}/topic?from=${from}&size=${size}`,
     bestTopics: (boardId: number, from = 0, size = 20) =>
@@ -50,6 +51,8 @@ export const endpoints = {
     randomTopics: (size = 10) => `${base}/topic/random-recent?size=${size}`,
     search: (keyword: string, from = 0, size = 20) =>
       `${base}/topic/search?keyword=${encodeURIComponent(keyword)}&from=${from}&size=${size}`,
+    searchInBoard: (boardId: number, keyword: string, from = 0, size = 20) =>
+      `${base}/topic/search/board/${boardId}?keyword=${encodeURIComponent(keyword)}&from=${from}&size=${size}`,
     favoriteTopics: (from = 0, size = 11, order = 1, groupId = 0) =>
       `${base}/topic/me/favorite?from=${from}&size=${size}&order=${order}&groupid=${groupId}`,
     vote: (topicId: number) => `${base}/topic/${topicId}/vote`,

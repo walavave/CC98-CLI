@@ -14,6 +14,18 @@ export function describeFeedStatus(feed: FeedListState): string {
       return feed.hasMore
         ? "关注：j/k 选择  l 打开帖子  n/Space 更多  h 返回  r 刷新"
         : "关注：j/k 选择  l 打开帖子  h 返回  r 刷新";
+    case "notifications-system":
+      return feed.hasMore
+        ? "系统通知：j/k 选择  l 打开关联内容  n/Space 更多  Esc/Backspace 返回  h 返回左栏  r 刷新"
+        : "系统通知：j/k 选择  l 打开关联内容  Esc/Backspace 返回  h 返回左栏  r 刷新";
+    case "notifications-at":
+      return feed.hasMore
+        ? "@通知：j/k 选择  l 打开关联内容  n/Space 更多  Esc/Backspace 返回  h 返回左栏  r 刷新"
+        : "@通知：j/k 选择  l 打开关联内容  Esc/Backspace 返回  h 返回左栏  r 刷新";
+    case "notifications-reply":
+      return feed.hasMore
+        ? "回复通知：j/k 选择  l 打开关联内容  n/Space 更多  Esc/Backspace 返回  h 返回左栏  r 刷新"
+        : "回复通知：j/k 选择  l 打开关联内容  Esc/Backspace 返回  h 返回左栏  r 刷新";
     case "messages":
       return feed.hasMore
         ? "消息：j/k 选择  l 打开会话  n/Space 更多联系人  h 返回  r 刷新"

@@ -31,6 +31,15 @@ export class CachedCc98Client {
     return this.cache.getOrSet(`board:info:${boardId}`, 24 * hour, () => this.client.getBoardInfo(boardId, { signal }), { force });
   }
 
+  searchBoards(keyword: string, force = false, signal?: AbortSignal): Promise<unknown> {
+    return this.cache.getOrSet(
+      `board:search:${keyword}`,
+      20 * second,
+      () => this.client.searchBoards(keyword, { signal }),
+      { force }
+    );
+  }
+
   getBoardTopics(boardId: number, from = 0, size = 20, best = false, force = false, signal?: AbortSignal): Promise<unknown> {
     return this.cache.getOrSet(
       `board:topics:${boardId}:${from}:${size}:${best ? "best" : "normal"}`,
@@ -49,6 +58,15 @@ export class CachedCc98Client {
       `topic:search:${keyword}:${from}:${size}`,
       20 * second,
       () => this.client.searchTopics(keyword, from, size, { signal }),
+      { force }
+    );
+  }
+
+  searchTopicsInBoard(boardId: number, keyword: string, from = 0, size = 10, force = false, signal?: AbortSignal): Promise<unknown> {
+    return this.cache.getOrSet(
+      `topic:search:board:${boardId}:${keyword}:${from}:${size}`,
+      20 * second,
+      () => this.client.searchTopicsInBoard(boardId, keyword, from, size, { signal }),
       { force }
     );
   }
@@ -101,6 +119,15 @@ export class CachedCc98Client {
     return this.cache.getOrSet(`message:recent:${from}:${size}`, 15 * second, () => this.client.getRecentChats(from, size, { signal }), { force });
   }
 
+  getNotices(type: "system" | "at" | "reply", from = 0, size = 10, force = false, signal?: AbortSignal): Promise<unknown> {
+    return this.cache.getOrSet(
+      `notification:${type}:${from}:${size}`,
+      15 * second,
+      () => this.client.getNotices(type, from, size, { signal }),
+      { force }
+    );
+  }
+
   getChatHistory(userId: number, from = 0, size = 10, force = false, signal?: AbortSignal): Promise<unknown> {
     return this.cache.getOrSet(
       `message:history:${userId}:${from}:${size}`,
@@ -124,6 +151,15 @@ export class CachedCc98Client {
 
   getUserProfile(userId: number, force = false, signal?: AbortSignal): Promise<unknown> {
     return this.cache.getOrSet(`user:profile:${userId}`, 60 * second, () => this.client.getUserProfile(userId, { signal }), { force });
+  }
+
+  searchUsers(name: string, force = false, signal?: AbortSignal): Promise<unknown> {
+    return this.cache.getOrSet(
+      `user:search:${name}`,
+      20 * second,
+      () => this.client.searchUsers(name, { signal }),
+      { force }
+    );
   }
 
   getUserFollowState(userId: number, force = false): Promise<unknown> {

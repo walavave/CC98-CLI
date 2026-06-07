@@ -8,7 +8,8 @@ import {
   type TopicLineEntry,
   type TopicPostEntry,
   type TopicReaderState,
-  type TuiState
+  type TuiState,
+  type BoardListState
 } from "../tui-model.js";
 import { renderMarkdownToLines, renderUbbToLines } from "../ubb-renderer.js";
 import { CachedCc98Client } from "../cached-client.js";
@@ -22,7 +23,8 @@ export async function openTopic(
   render: () => void,
   config: TuiConfig,
   force = false,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  boardContext?: BoardListState
 ): Promise<void> {
   state.mode = "topic";
   state.loading = true;
@@ -30,6 +32,7 @@ export async function openTopic(
   state.error = undefined;
   state.scroll = 0;
   state.imageViewer = undefined;
+  state.currentBoard = boardContext ?? state.currentBoard;
   state.topic = {
     topicId,
     title: `#${topicId}`,
@@ -56,6 +59,7 @@ export async function openTopic(
     ]);
     const topic = asObject(topicRaw);
     const posts = asArray(postsRaw);
+    state.currentBoard = topicBoardContext(topic) ?? state.currentBoard;
     const reader = buildTopicReader(topicId, topic, posts, 10, config, asBoolean(favoriteRaw) ?? false);
     reader.forceRefresh = force;
     state.topic = reader;
@@ -76,6 +80,15 @@ export async function openTopic(
     }
     render();
   }
+}
+
+function topicBoardContext(topic: Record<string, unknown>): BoardListState | undefined {
+  const boardId = asNumber(topic.boardId ?? topic.BoardId);
+  const boardTitle = normalizeInlineText(String(topic.boardName ?? topic.BoardName ?? "")).trim();
+  if (boardId === undefined || !boardTitle) {
+    return undefined;
+  }
+  return { boardId, title: boardTitle };
 }
 
 export async function loadNextTopicPage(

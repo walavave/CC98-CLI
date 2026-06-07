@@ -4,6 +4,7 @@ import {
   loadNextUserTopicPage,
   openBoard,
   openChat,
+  openNoticeList,
   openUserProfile
 } from "../../data/content.js";
 import { openTopic } from "../../data/topic.js";
@@ -76,6 +77,18 @@ export function handleContentFocus(context: RuntimeContext, key: string): void {
       void openChat(client, state, state.currentChat.userId, state.currentChat.title, render, true, nextSignal(), false);
       return;
     }
+    if (state.currentFeed?.kind === "notifications-system") {
+      void openNoticeList(client, state, "system", render, true, nextSignal(), false);
+      return;
+    }
+    if (state.currentFeed?.kind === "notifications-at") {
+      void openNoticeList(client, state, "at", render, true, nextSignal(), false);
+      return;
+    }
+    if (state.currentFeed?.kind === "notifications-reply") {
+      void openNoticeList(client, state, "reply", render, true, nextSignal(), false);
+      return;
+    }
     if (refreshCurrentMeView(context)) {
       return;
     }
@@ -106,8 +119,23 @@ export function getContentListScroll(state: RuntimeContext["state"], visibleCapa
 function openSelectedItem(context: RuntimeContext): boolean {
   const { state, render, client, config, nextSignal } = context;
   const selected = state.items[state.itemIndex];
+  if (selected?.action === "notice.system") {
+    void openNoticeList(client, state, "system", render, false, nextSignal());
+    return true;
+  }
+  if (selected?.action === "notice.at") {
+    void openNoticeList(client, state, "at", render, false, nextSignal());
+    return true;
+  }
+  if (selected?.action === "notice.reply") {
+    void openNoticeList(client, state, "reply", render, false, nextSignal());
+    return true;
+  }
   if (selected?.topicId !== undefined) {
-    void openTopic(client, state, selected.topicId, render, config, true, nextSignal());
+    const boardContext = selected.boardId !== undefined && selected.boardTitle
+      ? { boardId: selected.boardId, title: selected.boardTitle }
+      : state.currentBoard;
+    void openTopic(client, state, selected.topicId, render, config, true, nextSignal(), boardContext);
     return true;
   }
   if (selected?.boardId !== undefined) {

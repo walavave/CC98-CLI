@@ -1,6 +1,6 @@
 import type { TuiConfig } from "../../config.js";
 import { CachedCc98Client } from "../cached-client.js";
-import type { TuiState } from "../tui-model.js";
+import type { NoticeType, TuiState } from "../tui-model.js";
 import { describeFeedStatus } from "./feed-status.js";
 import { topicItem } from "./items.js";
 import { prepareListView } from "./navigation-state.js";
@@ -9,7 +9,8 @@ import {
   buildUserProfileItems,
   chatMessageItems,
   describeUserProfileStatus,
-  loadFeedPageItems
+  loadFeedPageItems,
+  noticeItems
 } from "./view-items.js";
 
 export async function openBoard(
@@ -82,6 +83,49 @@ export async function openChat(
     }
     state.error = error instanceof Error ? error.message : String(error);
     state.status = "私信读取失败；Esc/Backspace 返回联系人  h 返回左栏  r 重试";
+  } finally {
+    state.loading = false;
+    render();
+  }
+}
+
+export async function openNoticeList(
+  client: CachedCc98Client,
+  state: TuiState,
+  type: NoticeType,
+  render: () => void,
+  force = false,
+  signal?: AbortSignal,
+  pushParent = true
+): Promise<void> {
+  const title = noticeListTitle(type);
+  prepareListView(state, {
+    title,
+    status: `正在读取${title}...`,
+    pushParent
+  });
+  state.currentFeed = {
+    kind: noticeFeedKind(type),
+    title,
+    loaded: 0,
+    size: 12,
+    hasMore: true
+  };
+  const feed = state.currentFeed;
+  render();
+
+  try {
+    const notices = asArray(await client.getNotices(type, 0, feed.size + 1, force, signal));
+    state.items = noticeItems(type, notices.slice(0, feed.size));
+    feed.loaded = state.items.length;
+    feed.hasMore = notices.length > feed.size;
+    state.status = describeFeedStatus(feed);
+  } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
+    state.error = error instanceof Error ? error.message : String(error);
+    state.status = `${title}读取失败；Esc/Backspace 返回  h 返回左栏  r 重试`;
   } finally {
     state.loading = false;
     render();
@@ -230,7 +274,9 @@ export async function loadNextFeedPage(
   state.error = undefined;
   state.status = feed.kind === "messages"
     ? "正在读取更多联系人..."
-    : "正在加载更多帖子...";
+    : feed.kind.startsWith("notifications-")
+      ? "正在读取更多通知..."
+      : "正在加载更多帖子...";
   render();
 
   try {
@@ -246,9 +292,33 @@ export async function loadNextFeedPage(
     state.error = error instanceof Error ? error.message : String(error);
     state.status = feed.kind === "messages" || feed.kind === "me-fans"
       ? "加载更多联系人失败；n/Space 重试"
+      : feed.kind.startsWith("notifications-")
+        ? "加载更多通知失败；n/Space 重试"
       : "加载更多内容失败；n/Space 重试";
   } finally {
     state.loadingMore = false;
     render();
+  }
+}
+
+function noticeFeedKind(type: NoticeType): NonNullable<TuiState["currentFeed"]>["kind"] {
+  switch (type) {
+    case "system":
+      return "notifications-system";
+    case "at":
+      return "notifications-at";
+    case "reply":
+      return "notifications-reply";
+  }
+}
+
+function noticeListTitle(type: NoticeType): string {
+  switch (type) {
+    case "system":
+      return "系统通知";
+    case "at":
+      return "@通知";
+    case "reply":
+      return "回复通知";
   }
 }

@@ -1,8 +1,9 @@
 import { openBoard, openChat, openUserProfile } from "../../data/content.js";
-import { executeSearch, loadNextSearchPage } from "../../data/search.js";
+import { executeSearch, loadNextSearchPage, switchSearchKind } from "../../data/search.js";
 import { openTopic } from "../../data/topic.js";
 import { isPrintableInput } from "../../account-modal.js";
 import type { RuntimeContext } from "../context.js";
+import type { SearchKind } from "../../tui-model.js";
 import { leaveContentMode } from "../state.js";
 
 export function handleSearchContentFocus(context: RuntimeContext, key: string): void {
@@ -12,7 +13,7 @@ export function handleSearchContentFocus(context: RuntimeContext, key: string): 
     return;
   }
 
-  if (key === "h" || key === "\x1b[D" || key === "\x1b") {
+  if ((search.focus !== "tabs" && (key === "h" || key === "\x1b[D")) || key === "\x1b") {
     abortCurrent();
     leaveContentMode(state);
     render();
@@ -20,6 +21,11 @@ export function handleSearchContentFocus(context: RuntimeContext, key: string): 
   }
 
   if (search.focus === "input") {
+    if (key === "k" || key === "\x1b[A") {
+      search.focus = "tabs";
+      render();
+      return;
+    }
     if (key === "\x7f") {
       search.draft = search.draft.slice(0, -1);
       render();
@@ -40,6 +46,28 @@ export function handleSearchContentFocus(context: RuntimeContext, key: string): 
       return;
     }
     if (isPrintableInput(key)) {
+      search.draft = `${search.draft}${key}`;
+      render();
+    }
+    return;
+  }
+
+  if (search.focus === "tabs") {
+    if (key === "j" || key === "\x1b[B" || key === "\t" || key === "\r") {
+      search.focus = "input";
+      render();
+      return;
+    }
+    if (key === "h" || key === "\x1b[D" || key === "l" || key === "\x1b[C") {
+      abortCurrent();
+      if (switchSearchKind(state, adjacentSearchKind(search.kind, searchKinds(search), key === "h" || key === "\x1b[D" ? -1 : 1))) {
+        search.focus = "tabs";
+      }
+      render();
+      return;
+    }
+    if (isPrintableInput(key)) {
+      search.focus = "input";
       search.draft = `${search.draft}${key}`;
       render();
     }
@@ -97,6 +125,15 @@ export function handleSearchContentFocus(context: RuntimeContext, key: string): 
   }
 }
 
+function searchKinds(search: NonNullable<RuntimeContext["state"]["currentSearch"]>): SearchKind[] {
+  return search.board ? ["topic", "board", "user", "board-topic"] : ["topic", "board", "user"];
+}
+
+function adjacentSearchKind(current: SearchKind, kinds: SearchKind[], offset: number): SearchKind {
+  const currentIndex = Math.max(0, kinds.indexOf(current));
+  return kinds[(currentIndex + offset + kinds.length) % kinds.length] ?? current;
+}
+
 export function isAtSearchEnd(state: RuntimeContext["state"]): boolean {
   return Boolean(
     state.currentSearch &&
@@ -110,7 +147,10 @@ function openSearchSelectedItem(context: RuntimeContext): boolean {
   const { state, render, client, config, nextSignal } = context;
   const selected = state.items[state.itemIndex];
   if (selected?.topicId !== undefined) {
-    void openTopic(client, state, selected.topicId, render, config, true, nextSignal());
+    const boardContext = selected.boardId !== undefined && selected.boardTitle
+      ? { boardId: selected.boardId, title: selected.boardTitle }
+      : state.currentSearch?.kind === "board-topic" ? state.currentSearch.board : state.currentBoard;
+    void openTopic(client, state, selected.topicId, render, config, true, nextSignal(), boardContext);
     return true;
   }
   if (selected?.boardId !== undefined) {

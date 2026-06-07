@@ -6,9 +6,11 @@ import {
   type ViewSnapshot
 } from "../tui-model.js";
 
-export function createSearchState(): SearchListState {
+export function createSearchState(board?: SearchListState["board"]): SearchListState {
   return {
     title: "搜索",
+    kind: board ? "board-topic" : "topic",
+    board,
     query: "",
     draft: "",
     loaded: 0,

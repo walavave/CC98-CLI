@@ -182,16 +182,16 @@ export class Cc98Client {
     });
   }
 
-  async searchUsers(name: string): Promise<unknown> {
-    return this.request<unknown>(endpoints.user.search(name));
+  async searchUsers(name: string, options: RequestOptions = {}): Promise<unknown> {
+    return this.request<unknown>(endpoints.user.search(name), { signal: options.signal });
   }
 
   async getUnreadCount(options: RequestOptions = {}): Promise<unknown> {
     return this.request<unknown>(endpoints.user.unread, { signal: options.signal });
   }
 
-  async getNotices(type: "system" | "at" | "reply", from = 0, size = 10): Promise<unknown> {
-    return this.request<unknown>(endpoints.user.notices(type, from, size));
+  async getNotices(type: "system" | "at" | "reply", from = 0, size = 10, options: RequestOptions = {}): Promise<unknown> {
+    return this.request<unknown>(endpoints.user.notices(type, from, size), { signal: options.signal });
   }
 
   async getBrowseHistory(from = 0, size = 11, options: RequestOptions = {}): Promise<unknown> {
@@ -257,8 +257,16 @@ export class Cc98Client {
     return this.request<unknown>(endpoint, { signal: options.signal });
   }
 
+  async searchBoards(keyword: string, options: RequestOptions = {}): Promise<unknown> {
+    return this.request<unknown>(endpoints.board.search(keyword), { signal: options.signal });
+  }
+
   async searchTopics(keyword: string, from = 0, size = 20, options: RequestOptions = {}): Promise<unknown> {
     return this.request<unknown>(endpoints.topic.search(keyword, from, size), { signal: options.signal });
+  }
+
+  async searchTopicsInBoard(boardId: number, keyword: string, from = 0, size = 20, options: RequestOptions = {}): Promise<unknown> {
+    return this.request<unknown>(endpoints.topic.searchInBoard(boardId, keyword, from, size), { signal: options.signal });
   }
 
   async getPostReactionState(postId: number): Promise<unknown> {

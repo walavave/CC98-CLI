@@ -3,6 +3,7 @@ import {
   drawConfirmModal,
   drawLoginModal
 } from "./account-modal.js";
+import { ansi } from "./ansi.js";
 import type { TuiConfig } from "../config.js";
 import { Canvas } from "./canvas.js";
 import { emotionCategories, getEmotionPreview, getEmotionCategory } from "./emotion-catalog.js";
@@ -396,11 +397,11 @@ function drawSearch(state: TuiState, width: number, height: number): TopicDrawRe
   }
 
   const rows: string[] = [];
-  rows.push(textStyle.primaryBold(` ${state.viewTitle}`));
+  rows.push(drawSearchHeader(state.viewTitle, search, width));
 
   const inputText = search.draft || "";
   const placeholder = inputText ? "" : "输入关键词后按 Enter";
-  const inputLabel = ` 搜索> ${inputText || placeholder}`;
+  const inputLabel = ` 搜索${searchTabLabel(search.kind)}> ${inputText || placeholder}`;
   if (search.focus === "input" && state.focus === "content") {
     rows.push(selectedLine(fit(inputLabel, width), width, true));
   } else if (inputText) {
@@ -421,7 +422,7 @@ function drawSearch(state: TuiState, width: number, height: number): TopicDrawRe
   const visible = getVisibleItems(state.items, scroll, contentHeight, width, false, true);
 
   if (visible.length === 0) {
-    rows.push(textStyle.muted(search.searched ? " 暂无搜索结果" : " 在输入框中输入关键词并按 Enter"));
+    rows.push(textStyle.muted(search.searched ? " 暂无搜索结果" : " 在输入框中输入关键词并按 Enter；上键切换搜索类型"));
     return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
   }
 
@@ -447,6 +448,37 @@ function drawSearch(state: TuiState, width: number, height: number): TopicDrawRe
   }
 
   return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
+}
+
+function drawSearchHeader(title: string, search: NonNullable<TuiState["currentSearch"]>, width: number): string {
+  const titleText = ` ${title}`;
+  const tabs = searchKinds(search).map((entry) => drawSearchTab(searchTabLabel(entry, search), entry === search.kind));
+  const tabsText = tabs.join(" ");
+  return fit(`${textStyle.primaryBold(titleText)} ${tabsText}`, width);
+}
+
+function drawSearchTab(label: string, active: boolean): string {
+  const content = `[${label}]`;
+  return active
+    ? styled(content, `${theme.color.selectedBg}${theme.color.selectedFg}${ansi.bold}`)
+    : styled(content, theme.color.textOnPrimary);
+}
+
+function searchKinds(search: NonNullable<TuiState["currentSearch"]>): NonNullable<TuiState["currentSearch"]>["kind"][] {
+  return search.board ? ["topic", "board", "user", "board-topic"] : ["topic", "board", "user"];
+}
+
+function searchTabLabel(kind: NonNullable<TuiState["currentSearch"]>["kind"], search?: NonNullable<TuiState["currentSearch"]>): string {
+  switch (kind) {
+    case "topic":
+      return "主题";
+    case "board":
+      return "版面";
+    case "user":
+      return "用户";
+    case "board-topic":
+      return `版内：${search?.board?.title ?? ""}`;
+  }
 }
 
 function getListItemDetailLines(

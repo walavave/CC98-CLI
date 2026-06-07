@@ -1,4 +1,5 @@
 import { getStatus, navItems, settingsItems } from "../../tui-model.js";
+import { createSearchState } from "../../data/navigation-state.js";
 import type { RuntimeContext } from "../context.js";
 import { checkUpdate, openAccountOrLoginModal, requestCacheCleanup, requestLogout } from "../modals.js";
 import { enterContentMode, leaveContentMode } from "../state.js";
@@ -26,11 +27,15 @@ export async function focusSearchInput(context: RuntimeContext): Promise<void> {
     return;
   }
 
+  const boardContext = state.currentBoard;
   abortCurrent();
   state.navIndex = searchNavIndex;
   await load();
   if (navItems[state.navIndex]?.id !== "search" || !state.currentSearch) {
     return;
+  }
+  if (boardContext) {
+    state.currentSearch = createSearchState(boardContext);
   }
   state.mode = "list";
   state.focus = "content";

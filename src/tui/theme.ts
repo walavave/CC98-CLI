@@ -8,6 +8,7 @@ export const theme = {
     primaryBg: bg(0, 104, 176),
     panelBg: bg(5, 46, 74),
     selectedBg: bg(181, 196, 255),
+    selectedFg: fg(12, 38, 67),
     emotionSelectedBorder: fg(91, 207, 140),
     textOnPrimary: fg(245, 250, 255),
     muted: fg(139, 152, 166),
@@ -89,7 +90,7 @@ export function selectedLine(content: string, width: number, focused = true): st
   if (!focused) {
     return textStyle.primarySoft(fit(content, width));
   }
-  return styled(fit(content, width), theme.color.selectedBg);
+  return styled(fit(content, width), `${theme.color.selectedBg}${theme.color.selectedFg}${ansi.bold}`);
 }
 
 export function panelLine(content: string, width: number): string {

@@ -4,10 +4,12 @@ import type {
   LoginFormState
 } from "./account-modal.js";
 
-export type ViewId = "hot" | "new" | "search" | "boards" | "following" | "favorite" | "messages" | "me" | "settings";
+export type ViewId = "hot" | "new" | "search" | "boards" | "following" | "favorite" | "notifications" | "messages" | "me" | "settings";
 export type FocusColumn = "nav" | "content";
 export type ModalType = "help" | "account" | "login" | "confirm" | "image" | "compose" | "emotion-picker" | null;
-export type SearchFocus = "input" | "results";
+export type SearchFocus = "tabs" | "input" | "results";
+export type SearchKind = "topic" | "board" | "user" | "board-topic";
+export type NoticeType = "system" | "at" | "reply";
 
 export interface NavItem {
   id: ViewId;
@@ -22,6 +24,7 @@ export interface ContentItem {
   action?: string;
   topicId?: number;
   boardId?: number;
+  boardTitle?: string;
   chatUserId?: number;
   userId?: number;
   sortTime?: number;
@@ -93,7 +96,7 @@ export interface BoardListState {
 }
 
 export interface FeedListState {
-  kind: "new" | "following" | "messages" | "me-profile" | "me-favorites" | "me-replies" | "me-history" | "me-fans";
+  kind: "new" | "following" | "notifications-system" | "notifications-at" | "notifications-reply" | "messages" | "me-profile" | "me-favorites" | "me-replies" | "me-history" | "me-fans";
   title: string;
   loaded: number;
   size: number;
@@ -110,6 +113,8 @@ export interface ChatListState {
 
 export interface SearchListState {
   title: string;
+  kind: SearchKind;
+  board?: BoardListState;
   query: string;
   draft: string;
   loaded: number;
@@ -210,6 +215,7 @@ export const navItems: NavItem[] = [
   { id: "search", label: "搜索", hint: "主题检索" },
   { id: "boards", label: "版面", hint: "所有分区" },
   { id: "following", label: "关注", hint: "用户动态" },
+  { id: "notifications", label: "通知", hint: "系统与回复" },
   { id: "messages", label: "消息", hint: "未读与私信" },
   { id: "me", label: "我的", hint: "当前账号" },
   { id: "settings", label: "设置", hint: "账号与配置" }
@@ -260,15 +266,29 @@ export function getStatus(state: TuiState): string {
     return "设置";
   }
   if (state.currentSearch) {
+    const label = searchKindLabelForStatus(state.currentSearch);
     if (!state.currentSearch.searched) {
-      return "搜索：输入关键词后 Enter 执行";
+      return `搜索${label}：输入关键词后 Enter 执行`;
     }
     if (state.currentSearch.focus === "input") {
-      return `搜索：${state.currentSearch.query || "未输入关键词"}`;
+      return `搜索${label}：${state.currentSearch.query || "未输入关键词"}`;
     }
     return state.currentSearch.hasMore
-      ? `${state.items.length} 项，继续向下可加载更多`
-      : `${state.items.length} 项`;
+      ? `${label}结果 ${state.items.length} 项，继续向下可加载更多`
+      : `${label}结果 ${state.items.length} 项`;
   }
   return `${state.items.length} 项`;
+}
+
+function searchKindLabelForStatus(search: SearchListState): string {
+  switch (search.kind) {
+    case "topic":
+      return "主题";
+    case "board":
+      return "版面";
+    case "user":
+      return "用户";
+    case "board-topic":
+      return search.board ? `版内 ${search.board.title}` : "版内";
+  }
 }

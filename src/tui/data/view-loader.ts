@@ -2,14 +2,16 @@ import { CachedCc98Client } from "../cached-client.js";
 import type { ContentItem, FeedListState, ViewId } from "../tui-model.js";
 import { settingsItems } from "../tui-model.js";
 import { topicItem } from "./items.js";
+import { initialSearchStatus } from "./search.js";
 import { asArray, asNumber, asObject } from "./utils.js";
 import {
   chatItem,
   flattenBoards,
   loadChatUserNames,
   mapLimit,
-  overviewStats,
-  unreadStats
+  notificationCategoryItems,
+  noticeItems,
+  overviewStats
 } from "./view-items.js";
 
 export async function loadView(
@@ -63,7 +65,7 @@ export async function loadView(
       return {
         title: "搜索",
         items: [],
-        status: "搜索：按 Enter 进入输入框并搜索主题"
+        status: initialSearchStatus("topic")
       };
     case "boards": {
       const sections = asArray(await client.getAllBoards(force, signal));
@@ -94,6 +96,33 @@ export async function loadView(
           : "关注：j/k 选择  l 打开帖子  h 返回  r 刷新"
       };
     }
+    case "notifications": {
+      const [unreadRaw, replyRaw, atRaw, systemRaw] = await Promise.all([
+        client.getUnreadCount(force, signal),
+        client.getNotices("reply", 0, 1, force, signal),
+        client.getNotices("at", 0, 1, force, signal),
+        client.getNotices("system", 0, 1, force, signal)
+      ]);
+      const unreadObject = asObject(unreadRaw);
+      const items = notificationCategoryItems(unreadObject);
+      const previews = new Map([
+        ["reply", noticeItems("reply", asArray(replyRaw)).at(0)],
+        ["at", noticeItems("at", asArray(atRaw)).at(0)],
+        ["system", noticeItems("system", asArray(systemRaw)).at(0)]
+      ]);
+      return {
+        title: "通知",
+        items: items.map((item) => {
+          const action = item.action?.replace(/^notice\./, "");
+          const preview = action ? previews.get(action) : undefined;
+          return {
+            ...item,
+            detail: preview?.title ?? item.detail
+          };
+        }),
+        status: "通知：j/k 选择  l 查看列表  h 返回  r 刷新"
+      };
+    }
     case "favorite": {
       const [meRaw, sectionsRaw] = await Promise.all([
         client.getMe(force, signal),
@@ -121,16 +150,13 @@ export async function loadView(
         client.getRecentChats(0, size + 1, force, signal)
       ]);
       const unreadObject = asObject(unread);
-      const unreadEntries = unreadStats(unreadObject);
       const chats = asArray(recent);
       const visibleChats = chats.slice(0, size);
       const userNames = await loadChatUserNames(client, chats, force, signal);
-      const unreadItems = unreadEntries
-        .filter((entry) => entry.detail !== "0" && entry.detail !== "-")
-        .map((entry) => ({
-          title: `未读 ${entry.title}`,
-          detail: entry.detail
-        }));
+      const messageCount = typeof unreadObject.messageCount === "number" ? unreadObject.messageCount : 0;
+      const unreadItems = messageCount > 0
+        ? [{ title: "未读私信", detail: String(messageCount) }]
+        : [];
       const chatItems = visibleChats.length > 0
         ? visibleChats.map((chat) => chatItem(chat, userNames))
         : [{ title: "暂无最近私信", meta: "recent-contact-users" }];
