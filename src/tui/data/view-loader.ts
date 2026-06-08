@@ -10,8 +10,8 @@ import {
   hasUnreadChatItem,
   loadChatUnreadCounts,
   loadChatUserNames,
+  loadNoticeItems,
   notificationCategoryItems,
-  noticeItems,
   overviewStats
 } from "./view-items.js";
 
@@ -115,10 +115,15 @@ export async function loadView(
       ]);
       const unreadObject = asObject(unreadRaw);
       const items = notificationCategoryItems(unreadObject);
+      const [replyPreviewItems, atPreviewItems, systemPreviewItems] = await Promise.all([
+        loadNoticeItems(client, "reply", asArray(replyRaw), force, signal),
+        loadNoticeItems(client, "at", asArray(atRaw), force, signal),
+        loadNoticeItems(client, "system", asArray(systemRaw), force, signal)
+      ]);
       const previews = new Map([
-        ["reply", noticeItems("reply", asArray(replyRaw)).at(0)],
-        ["at", noticeItems("at", asArray(atRaw)).at(0)],
-        ["system", noticeItems("system", asArray(systemRaw)).at(0)]
+        ["reply", replyPreviewItems.at(0)],
+        ["at", atPreviewItems.at(0)],
+        ["system", systemPreviewItems.at(0)]
       ]);
       return {
         title: "通知",

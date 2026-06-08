@@ -1,5 +1,5 @@
-import { isEmotionAssetPath } from "../emotion-preview.js";
-import { loadModalImagePreview, supportsImagePreview } from "../image-preview.js";
+import { isEmotionAssetPath } from "../media/emotion-preview.js";
+import { loadModalImagePreview, supportsImagePreview } from "../media/image-preview.js";
 import { currentTopicLine, currentTopicPost, getStatus } from "../tui-model.js";
 import type { RuntimeContext } from "./context.js";
 

@@ -1,9 +1,9 @@
-import { downloadUrlToDownloads } from "../downloads.js";
-import { fill, length, pad, rect, split } from "../layout.js";
+import { downloadUrlToDownloads } from "../media/downloads.js";
+import { fill, length, pad, rect, split } from "../render-core/layout.js";
 import { getRenderedListItemIndexAtRow, getRenderedSearchItemIndexAtRow, getSidebarWidth } from "../renderer.js";
-import { cellWidth } from "../text.js";
+import { cellWidth } from "../render-core/text.js";
 import { getStatus, navItems, settingsItems } from "../tui-model.js";
-import type { MouseEvent } from "../terminal.js";
+import type { MouseEvent } from "../render-core/terminal.js";
 import type { RuntimeContext } from "./context.js";
 import { loadFollowingKind, switchFollowingKind } from "../data/following.js";
 import { switchSearchKind } from "../data/search.js";

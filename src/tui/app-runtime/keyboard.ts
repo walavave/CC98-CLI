@@ -1,7 +1,8 @@
 import type { RuntimeContext } from "./context.js";
+import type { TuiState } from "../tui-model.js";
 import { openChat } from "../data/content.js";
 import { jumpToTopicFloor, openTopic } from "../data/topic.js";
-import { ensureEmotionPreviews, getEmotionCategory } from "../emotion-catalog.js";
+import { ensureEmotionPreviews, getEmotionCategory } from "../media/emotion-catalog.js";
 import { isPrintableInput } from "../account-modal.js";
 import { focusSearchInput, handleContentFocus, handleNavFocus, handleSettingsMode } from "./content.js";
 import { handleImageModal } from "./image-viewer.js";
@@ -24,12 +25,22 @@ export function createKeyHandler(context: RuntimeContext): (key: string) => void
     const { keymap, state, close, render } = context;
     const keyAction = keymap.feed(key);
 
-    if (key === "\u0003" || key === "q") {
+    if (key === "\u0003" || (key === "q" && !isTextEntryActive(state))) {
       close();
       return;
     }
 
     if (state.modal === "help") {
+      if (key === "j" || key === "\x1b[B") {
+        state.helpScroll += 1;
+        render();
+        return;
+      }
+      if (key === "k" || key === "\x1b[A") {
+        state.helpScroll = Math.max(0, state.helpScroll - 1);
+        render();
+        return;
+      }
       if (key === "h" || key === "\x1b[D" || key === "\x1b" || key === "?" || key === "\r") {
         state.modal = null;
         render();
@@ -69,6 +80,7 @@ export function createKeyHandler(context: RuntimeContext): (key: string) => void
 
     if (key === "?") {
       state.modal = "help";
+      state.helpScroll = 0;
       render();
       return;
     }
@@ -95,6 +107,17 @@ export function createKeyHandler(context: RuntimeContext): (key: string) => void
 
     handleContentFocus(context, key, keyAction);
   };
+}
+
+function isTextEntryActive(state: TuiState): boolean {
+  if (state.modal === "compose") {
+    return true;
+  }
+  if (state.modal === "login") {
+    return state.loginForm.fieldIndex < 2;
+  }
+  return state.focus === "content"
+    && state.currentSearch?.focus === "input";
 }
 
 function handleComposeModal(context: RuntimeContext, key: string, keyAction: string | undefined): void {
@@ -303,7 +326,7 @@ async function submitCompose(context: RuntimeContext): Promise<void> {
       : undefined;
     state.composeDialog = undefined;
     state.modal = null;
-    await openTopic(client, state, topicId, render, config, true, nextSignal());
+    await openTopic(client, state, topicId, render, config, true, nextSignal(), undefined, false);
     if (floor && state.topic) {
       await jumpToTopicFloor(client, state, floor, render, config, nextSignal(), true);
     }

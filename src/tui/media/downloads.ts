@@ -1,6 +1,6 @@
 import { access, mkdir, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
-import { getDownloadsDir } from "../storage/paths.js";
+import { getDownloadsDir } from "../../storage/paths.js";
 
 export async function downloadUrlToDownloads(url: string): Promise<string> {
   if (!/^https?:\/\//i.test(url)) {

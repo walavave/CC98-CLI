@@ -11,6 +11,8 @@ export async function focusSearchInput(context: RuntimeContext): Promise<void> {
     return;
   }
 
+  const boardContext = state.topic?.board ?? state.currentBoard;
+
   if (state.navIndex === searchNavIndex && state.currentSearch) {
     abortCurrent();
     state.mode = "list";
@@ -20,6 +22,9 @@ export async function focusSearchInput(context: RuntimeContext): Promise<void> {
     state.error = undefined;
     state.topic = undefined;
     state.imageViewer = undefined;
+    if (boardContext) {
+      state.currentSearch.board = boardContext;
+    }
     state.currentSearch.focus = "input";
     state.viewTitle = state.currentSearch.title;
     state.status = getStatus(state);
@@ -27,7 +32,6 @@ export async function focusSearchInput(context: RuntimeContext): Promise<void> {
     return;
   }
 
-  const boardContext = state.currentBoard;
   abortCurrent();
   state.navIndex = searchNavIndex;
   await load();

@@ -5,7 +5,7 @@ import { extname, isAbsolute, join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { getCacheDir } from "../storage/paths.js";
+import { getCacheDir } from "../../storage/paths.js";
 
 export const imagePreviewRows = 8;
 

@@ -1,6 +1,6 @@
 import { stdin, stdout } from "node:process";
 import { ansi, moveTo } from "./ansi.js";
-import { getClearVisibleImageSequence, getImagePreviewSequence } from "./image-preview.js";
+import { getClearVisibleImageSequence, getImagePreviewSequence } from "../media/image-preview.js";
 
 export interface TerminalSize {
   columns: number;

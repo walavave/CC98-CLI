@@ -1,7 +1,7 @@
 import { loadNextFeedPage } from "../data/content.js";
 import { loadNextSearchPage } from "../data/search.js";
 import { loadNextTopicPage } from "../data/topic.js";
-import type { MouseEvent } from "../terminal.js";
+import type { MouseEvent } from "../render-core/terminal.js";
 import type { TuiState } from "../tui-model.js";
 import type { RuntimeContext } from "./context.js";
 import { isAtListEnd, isAtSearchEnd } from "./content.js";

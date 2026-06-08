@@ -78,10 +78,6 @@ export function handleContentFocus(context: RuntimeContext, key: string, keyActi
     return;
   }
   if (key === "r") {
-    if (state.currentBoard) {
-      void openBoard(client, state, state.currentBoard.boardId, state.currentBoard.title, render, true, nextSignal(), false);
-      return;
-    }
     if (state.currentChat) {
       void openChat(client, state, state.currentChat.userId, state.currentChat.title, render, true, nextSignal(), false);
       return;
@@ -101,8 +97,16 @@ export function handleContentFocus(context: RuntimeContext, key: string, keyActi
     if (refreshCurrentMeView(context)) {
       return;
     }
+    if (state.currentFeed) {
+      void load(true);
+      return;
+    }
     if (state.currentUser) {
       void openUserProfile(client, state, state.currentUser.userId, render, true, nextSignal(), false);
+      return;
+    }
+    if (state.currentBoard) {
+      void openBoard(client, state, state.currentBoard.boardId, state.currentBoard.title || `#${state.currentBoard.boardId}`, render, true, nextSignal(), false);
       return;
     }
     void load(true);
@@ -141,14 +145,14 @@ function openSelectedItem(context: RuntimeContext): boolean {
     return true;
   }
   if (selected?.topicId !== undefined) {
-    const boardContext = selected.boardId !== undefined && selected.boardTitle
+    const boardContext = selected.boardId !== undefined
       ? { boardId: selected.boardId, title: selected.boardTitle }
       : state.currentBoard;
     void openTopic(client, state, selected.topicId, render, config, true, nextSignal(), boardContext);
     return true;
   }
   if (selected?.boardId !== undefined) {
-    void openBoard(client, state, selected.boardId, selected.title, render, false, nextSignal());
+    void openBoard(client, state, selected.boardId, selected.title || `#${selected.boardId}`, render, false, nextSignal());
     return true;
   }
   if (selected?.chatUserId !== undefined) {

@@ -18,7 +18,7 @@ import {
 import { loadTuiKeymap } from "./keymap.js";
 import { draw } from "./renderer.js";
 import { getStatus, navItems, type TuiState } from "./tui-model.js";
-import { Terminal } from "./terminal.js";
+import { Terminal } from "./render-core/terminal.js";
 
 export async function runTui(): Promise<void> {
   const terminal = new Terminal();
@@ -66,7 +66,8 @@ export async function runTui(): Promise<void> {
     },
     loginForm: createLoginForm(),
     imageViewer: undefined,
-    composeDialog: undefined
+    composeDialog: undefined,
+    helpScroll: 0
   };
 
   terminal.enter();

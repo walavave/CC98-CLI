@@ -154,9 +154,13 @@ async function searchItems(
       if (!board) {
         return { items: [], received: 0, hasMore: false };
       }
+      const boardFallback = {
+        boardId: board.boardId,
+        title: board.title || `#${board.boardId}`
+      };
       const topics = asArray(await client.searchTopicsInBoard(board.boardId, query, from, size, force, signal));
       return {
-        items: topics.map((topic) => topicItem(topic, board)),
+        items: topics.map((topic) => topicItem(topic, boardFallback)),
         received: topics.length,
         hasMore: topics.length === size
       };

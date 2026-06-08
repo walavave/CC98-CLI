@@ -9,7 +9,7 @@ import {
   chatMessageItems,
   describeUserProfileStatus,
   loadFeedPageItems,
-  noticeItems
+  loadNoticeItems
 } from "./view-items.js";
 
 export async function openBoard(
@@ -142,7 +142,7 @@ export async function openNoticeList(
 
   try {
     const notices = asArray(await client.getNotices(type, 0, feed.size + 1, force, signal));
-    state.items = noticeItems(type, notices.slice(0, feed.size));
+    state.items = await loadNoticeItems(client, type, notices.slice(0, feed.size), force, signal);
     feed.loaded = state.items.length;
     feed.hasMore = notices.length > feed.size;
     state.status = describeFeedStatus(feed);

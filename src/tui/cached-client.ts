@@ -188,6 +188,14 @@ export class CachedCc98Client {
     return this.cache.getOrSet(`topic:meta:${topicId}`, 60 * second, () => this.client.getTopic(topicId, { signal }), { force });
   }
 
+  getBasicTopics(ids: number[], force = false, signal?: AbortSignal): Promise<unknown> {
+    const uniqueIds = [...new Set(ids)].sort((a, b) => a - b);
+    if (uniqueIds.length === 0) {
+      return Promise.resolve([]);
+    }
+    return this.cache.getOrSet(`topic:basic:${uniqueIds.join(",")}`, 60 * second, () => this.client.getBasicTopics(uniqueIds), { force });
+  }
+
   getTopicFavoriteState(topicId: number, force = false): Promise<unknown> {
     return this.cache.getOrSet(`topic:favorite-state:${topicId}`, 10 * second, () => this.client.isTopicFavorite(topicId), { force });
   }

@@ -74,12 +74,14 @@ export interface TuiState {
   confirmDialog?: ConfirmDialogState;
   imageViewer?: ImageViewerState;
   composeDialog?: ComposeDialogState;
+  helpScroll: number;
 }
 
 export interface ListSnapshot {
   title: string;
   items: ContentItem[];
   itemIndex: number;
+  scroll: number;
   status: string;
   currentBoard?: BoardListState;
   currentFeed?: FeedListState;
@@ -103,7 +105,7 @@ export type ViewSnapshot =
 
 export interface BoardListState {
   boardId: number;
-  title: string;
+  title?: string;
 }
 
 export interface FeedListState {
@@ -157,6 +159,7 @@ export interface TopicReaderState {
   topicId: number;
   title: string;
   meta: string;
+  board?: BoardListState;
   isFavorite: boolean;
   forceRefresh: boolean;
   lines: string[];
@@ -199,6 +202,8 @@ export interface TopicPostEntry {
   floor?: number;
   author: string;
   time: string;
+  rawTime: string;
+  rawContent: string;
   likeCount: number;
   dislikeCount: number;
   likeState: 0 | 1 | 2;
@@ -314,7 +319,7 @@ function searchKindLabelForStatus(search: SearchListState): string {
     case "user":
       return "用户";
     case "board-topic":
-      return search.board ? `版内 ${search.board.title}` : "版内";
+      return search.board ? `版内 ${search.board.title ?? `#${search.board.boardId}`}` : "版内";
   }
 }
 

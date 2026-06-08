@@ -9,6 +9,10 @@ export function showNotification(state: TuiState, message: string, durationMs = 
 }
 
 export function leaveTopicMode(state: TuiState): void {
+  if (state.history.length > 0) {
+    restorePreviousView(state);
+    return;
+  }
   state.mode = "list";
   state.focus = "content";
   state.scroll = 0;

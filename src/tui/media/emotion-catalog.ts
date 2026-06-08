@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { loadEmotionPreview } from "./emotion-preview.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
-const forumImageRoot = join(moduleDir, "..", "..", "assets", "forum-images");
+const forumImageRoot = join(moduleDir, "..", "..", "..", "assets", "forum-images");
 
 export type EmotionCategoryId = "CC98" | "ac" | "mj" | "tb" | "ms" | "em";
 export type EmotionPickerFocus = "sidebar" | "grid";

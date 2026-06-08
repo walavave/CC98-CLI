@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { emotionPreviewRows } from "./emotion-preview.js";
-import { theme } from "./theme.js";
+import { theme } from "../render-core/theme.js";
 
 export interface RenderedPost {
   lines: string[];
@@ -14,7 +14,7 @@ interface RenderOptions {
 }
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
-const forumImageRoot = join(moduleDir, "..", "..", "assets", "forum-images");
+const forumImageRoot = join(moduleDir, "..", "..", "..", "assets", "forum-images");
 const mediaBlockStart = "@@CC98_MEDIA_START@@";
 const mediaBlockEnd = "@@CC98_MEDIA_END@@";
 const legacyMediaBlockTag = /@@CC98MEDIA(?:START|SART|END)@@/gi;
@@ -61,9 +61,7 @@ export function renderUbbToLines(content: string, width: number, options: Render
     return `[link ${links.length}: ${shortUrl(cleanUrl)}]`;
   });
 
-  text = text.replace(/\[quote\]([\s\S]*?)\[\/quote\]/gi, (_match, quoted: string) => {
-    return `\n${stripUbb(quoted).split("\n").map((line) => `${theme.quote.prefix}${line}`).join("\n")}\n`;
-  });
+  text = renderNestedUbbQuotes(text);
 
   text = text.replace(/\[code\]([\s\S]*?)\[\/code\]/gi, (_match, code: string) => {
     return `\n${code.split("\n").map((line) => `    ${line}`).join("\n")}\n`;
@@ -107,7 +105,8 @@ export function renderMarkdownToLines(content: string, width: number, options: R
     return `${label} [link ${links.length}: ${shortUrl(cleanUrl)}]`;
   });
 
-  text = text.replace(/^\s{0,3}>\s?(.*)$/gm, (_match, quoted: string) => `${theme.quote.prefix}${quoted}`);
+  text = compactMarkdownQuoteMediaBlocks(text)
+    .replace(/^\s{0,3}>\s?(.*)$/gm, (_match, quoted: string) => `${theme.quote.prefix}${quoted}`);
   text = text.replace(/```([\s\S]*?)```/g, (_match, code: string) => {
     const normalized = code.replace(/^\w+\n/, "");
     return `\n${normalized.split("\n").map((line) => `    ${line}`).join("\n")}\n`;
@@ -137,6 +136,100 @@ function stripUbb(value: string): string {
     .replace(/\[(?:\/)?(?:b|i|u|size|color|align|email|del|s|sub|sup|h\d?)(?:=[^\]]*)?\]/gi, "")
     .replace(/\[[a-z0-9]+(?:=[^\]]*)?\]/gi, "")
     .replace(/\[\/[a-z0-9]+\]/gi, "");
+}
+
+function renderNestedUbbQuotes(value: string): string {
+  const segments = parseQuoteSegments(value);
+  return segments.map((segment) => segment.kind === "text" ? segment.value : renderQuoteSegment(segment.value)).join("");
+}
+
+function renderQuoteSegment(value: string): string {
+  const blocks = flattenQuoteBlocks(value);
+  const lines = blocks.flatMap((block, index) => {
+    const rendered = compactQuotedMediaLines(stripUbb(renderNestedUbbQuotes(block)));
+    if (rendered.length === 0) {
+      return [];
+    }
+    return index === 0 ? rendered : ["", ...rendered];
+  });
+  if (lines.length === 0) {
+    return "\n";
+  }
+  return `\n${lines.map((line) => `${theme.quote.prefix}${line}`).join("\n")}\n`;
+}
+
+function flattenQuoteBlocks(value: string): string[] {
+  const segments = parseQuoteSegments(value);
+  const blocks: string[] = [];
+  let textBuffer = "";
+
+  for (const segment of segments) {
+    if (segment.kind === "text") {
+      textBuffer += segment.value;
+      continue;
+    }
+    blocks.push(...flattenQuoteBlocks(segment.value));
+  }
+
+  if (textBuffer.trim()) {
+    blocks.push(textBuffer);
+  }
+
+  return blocks;
+}
+
+function parseQuoteSegments(value: string): Array<{ kind: "text" | "quote"; value: string }> {
+  const segments: Array<{ kind: "text" | "quote"; value: string }> = [];
+  const quoteTag = /\[(\/)?(quote|quotex)\]/gi;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = quoteTag.exec(value)) !== null) {
+    const [tag] = match;
+    const isClosing = match[1] === "/";
+    if (isClosing) {
+      continue;
+    }
+
+    const start = match.index;
+    const end = findMatchingQuoteEnd(value, quoteTag.lastIndex);
+    if (!end) {
+      continue;
+    }
+
+    if (start > cursor) {
+      segments.push({ kind: "text", value: value.slice(cursor, start) });
+    }
+    segments.push({ kind: "quote", value: value.slice(quoteTag.lastIndex, end.start) });
+    cursor = end.end;
+    quoteTag.lastIndex = end.end;
+  }
+
+  if (cursor < value.length) {
+    segments.push({ kind: "text", value: value.slice(cursor) });
+  }
+
+  return segments;
+}
+
+function findMatchingQuoteEnd(value: string, from: number): { start: number; end: number } | undefined {
+  const quoteTag = /\[(\/)?(quote|quotex)\]/gi;
+  quoteTag.lastIndex = from;
+  let depth = 1;
+  let match: RegExpExecArray | null;
+
+  while ((match = quoteTag.exec(value)) !== null) {
+    if (match[1] === "/") {
+      depth -= 1;
+      if (depth === 0) {
+        return { start: match.index, end: quoteTag.lastIndex };
+      }
+      continue;
+    }
+    depth += 1;
+  }
+
+  return undefined;
 }
 
 function replaceInlineEmotionTags(value: string, images: string[], previewRows = 0): string {
@@ -270,6 +363,64 @@ function wrapLines(value: string, width: number): string[] {
   }
 
   return lines;
+}
+
+function compactQuotedMediaLines(value: string): string[] {
+  const input = value.split("\n");
+  const output: string[] = [];
+  let previousBlank = false;
+
+  for (let index = 0; index < input.length; index += 1) {
+    const line = input[index] ?? "";
+    const isBlank = line.trim() === "";
+    if (isBlank && previousBlank) {
+      continue;
+    }
+    output.push(line);
+    previousBlank = isBlank;
+    if (!line.startsWith("[image ")) {
+      continue;
+    }
+    while (index + 1 < input.length && (input[index + 1] ?? "").trim() === "") {
+      index += 1;
+    }
+    previousBlank = false;
+  }
+
+  while (output.length > 0 && output[output.length - 1]?.trim() === "") {
+    output.pop();
+  }
+
+  return output;
+}
+
+function compactMarkdownQuoteMediaBlocks(value: string): string {
+  const lines = value.split("\n");
+  const output: string[] = [];
+  let previousBlankQuote = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    const isBlankQuote = /^\s{0,3}>\s?$/.test(line);
+    if (isBlankQuote && previousBlankQuote) {
+      continue;
+    }
+    output.push(line);
+    previousBlankQuote = isBlankQuote;
+    if (!/^\s{0,3}>\s?\[image \d+\]/.test(line)) {
+      continue;
+    }
+    while (index + 1 < lines.length && /^\s{0,3}>\s?$/.test(lines[index + 1] ?? "")) {
+      index += 1;
+    }
+    previousBlankQuote = false;
+  }
+
+  while (output.length > 0 && /^\s{0,3}>\s?$/.test(output[output.length - 1] ?? "")) {
+    output.pop();
+  }
+
+  return output.join("\n");
 }
 
 function shortUrl(value: string): string {

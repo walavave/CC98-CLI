@@ -1,7 +1,8 @@
-import { emotionPreviewRows, isEmotionAssetPath, loadEmotionPreview, measureEmotionPreview } from "../emotion-preview.js";
-import { imagePreviewRows, loadImagePreview, measureImagePreview, supportsImagePreview } from "../image-preview.js";
+import { emotionPreviewRows, isEmotionAssetPath, loadEmotionPreview, measureEmotionPreview } from "../media/emotion-preview.js";
+import { imagePreviewRows, loadImagePreview, measureImagePreview, supportsImagePreview } from "../media/image-preview.js";
 import { getSidebarWidth } from "../renderer.js";
-import { theme } from "../theme.js";
+import { theme } from "../render-core/theme.js";
+import { pushCurrentViewSnapshot } from "./navigation-state.js";
 import {
   currentTopicPost,
   getStatus,
@@ -11,7 +12,7 @@ import {
   type TuiState,
   type BoardListState
 } from "../tui-model.js";
-import { renderMarkdownToLines, renderUbbToLines } from "../ubb-renderer.js";
+import { renderMarkdownToLines, renderUbbToLines } from "../media/ubb-renderer.js";
 import { CachedCc98Client } from "../cached-client.js";
 import type { TuiConfig } from "../../config.js";
 import { asArray, asBoolean, asNumber, asObject, isAbortError, normalizeInlineText } from "./utils.js";
@@ -24,8 +25,13 @@ export async function openTopic(
   config: TuiConfig,
   force = false,
   signal?: AbortSignal,
-  boardContext?: BoardListState
+  boardContext?: BoardListState,
+  pushParent = true
 ): Promise<void> {
+  if (pushParent) {
+    pushCurrentViewSnapshot(state);
+  }
+
   state.mode = "topic";
   state.loading = true;
   state.loadingMore = false;
@@ -37,6 +43,7 @@ export async function openTopic(
     topicId,
     title: `#${topicId}`,
     meta: "",
+    board: boardContext ?? state.currentBoard,
     isFavorite: false,
     forceRefresh: force,
     lines: [],
@@ -59,8 +66,9 @@ export async function openTopic(
     ]);
     const topic = asObject(topicRaw);
     const posts = asArray(postsRaw);
-    state.currentBoard = topicBoardContext(topic) ?? state.currentBoard;
-    const reader = buildTopicReader(topicId, topic, posts, 10, config, asBoolean(favoriteRaw) ?? false);
+    const resolvedBoard = await resolveTopicBoardContext(client, topicBoardContext(topic) ?? state.currentBoard, force, signal);
+    state.currentBoard = resolvedBoard;
+    const reader = buildTopicReader(topicId, topic, posts, 10, config, asBoolean(favoriteRaw) ?? false, resolvedBoard);
     reader.forceRefresh = force;
     state.topic = reader;
     state.viewTitle = reader.title;
@@ -85,10 +93,29 @@ export async function openTopic(
 function topicBoardContext(topic: Record<string, unknown>): BoardListState | undefined {
   const boardId = asNumber(topic.boardId ?? topic.BoardId);
   const boardTitle = normalizeInlineText(String(topic.boardName ?? topic.BoardName ?? "")).trim();
-  if (boardId === undefined || !boardTitle) {
+  if (boardId === undefined) {
     return undefined;
   }
-  return { boardId, title: boardTitle };
+  return { boardId, title: boardTitle || undefined };
+}
+
+async function resolveTopicBoardContext(
+  client: CachedCc98Client,
+  board: BoardListState | undefined,
+  force = false,
+  signal?: AbortSignal
+): Promise<BoardListState | undefined> {
+  if (!board || board.title) {
+    return board;
+  }
+
+  try {
+    const boardInfo = asObject(await client.getBoardInfo(board.boardId, force, signal));
+    const title = normalizeInlineText(String(boardInfo.name ?? boardInfo.title ?? "")).trim();
+    return title ? { boardId: board.boardId, title } : board;
+  } catch {
+    return board;
+  }
 }
 
 export async function loadNextTopicPage(
@@ -290,10 +317,12 @@ function buildTopicReader(
   posts: unknown[],
   size: number,
   config: TuiConfig,
-  isFavorite: boolean
+  isFavorite: boolean,
+  board?: BoardListState
 ): TopicReaderState {
   const title = normalizeInlineText(String(topic.title ?? `#${topicId}`));
   const meta = [
+    board?.title ?? (board ? `#${board.boardId}` : undefined),
     topic.userName,
     topic.replyCount !== undefined ? `${topic.replyCount} 回复` : undefined,
     topic.hitCount !== undefined ? `${topic.hitCount} 浏览` : undefined
@@ -304,6 +333,7 @@ function buildTopicReader(
     topicId,
     title,
     meta,
+    board,
     isFavorite,
     forceRefresh: false,
     lines: rendered.lines,
@@ -358,7 +388,8 @@ function renderPosts(
     const floorNumber = asNumber(post.floor);
     const floor = floorNumber !== undefined ? `#${floorNumber}` : "#?";
     const author = String(post.userName ?? "匿名");
-    const time = typeof post.time === "string" ? post.time.replace("T", " ").slice(0, 16) : "";
+    const rawTime = typeof post.time === "string" ? post.time.replace("T", " ").slice(0, 19) : "";
+    const time = rawTime ? rawTime.slice(0, 16) : "";
     const likeCount = asNumber(post.likeCount) ?? 0;
     const dislikeCount = asNumber(post.dislikeCount) ?? 0;
     const likeState = normalizeLikeState(post.likeState);
@@ -426,6 +457,8 @@ function renderPosts(
       floor: floorNumber,
       author,
       time,
+      rawTime,
+      rawContent: content,
       likeCount,
       dislikeCount,
       likeState,

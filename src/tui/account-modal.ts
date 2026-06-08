@@ -1,6 +1,6 @@
-import { Canvas } from "./canvas.js";
-import { center, rect } from "./layout.js";
-import { textStyle, theme } from "./theme.js";
+import { Canvas } from "./render-core/canvas.js";
+import { center, rect } from "./render-core/layout.js";
+import { textStyle, theme } from "./render-core/theme.js";
 
 export interface AccountModalState {
   accounts: AccountListItem[];

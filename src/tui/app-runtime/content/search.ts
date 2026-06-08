@@ -154,7 +154,7 @@ function openSearchSelectedItem(context: RuntimeContext): boolean {
     return true;
   }
   if (selected?.boardId !== undefined) {
-    void openBoard(client, state, selected.boardId, selected.title, render, false, nextSignal());
+    void openBoard(client, state, selected.boardId, selected.title || `#${selected.boardId}`, render, false, nextSignal());
     return true;
   }
   if (selected?.chatUserId !== undefined) {

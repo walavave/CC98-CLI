@@ -1,5 +1,6 @@
+import { spawn } from "node:child_process";
 import type { TuiConfig } from "../../config.js";
-import { openUserProfile } from "../data/content.js";
+import { openBoard, openUserProfile } from "../data/content.js";
 import { jumpRelativeTopicFloor, jumpToTopicFloor, loadNextTopicPage, openTopic } from "../data/topic.js";
 import { currentTopicPost, getStatus, type TuiState } from "../tui-model.js";
 import type { RuntimeContext } from "./context.js";
@@ -11,6 +12,10 @@ export function handleTopicMode(context: RuntimeContext, key: string, keyAction:
   const { state, render, client, config, nextSignal, abortCurrent } = context;
   if (keyAction === "compose.open" && !state.topic?.floorInput) {
     openComposeModal(context);
+    return;
+  }
+  if (key === "C" && !state.topic?.floorInput) {
+    openComposeQuoteModal(context);
     return;
   }
   if (key === ":" && state.topic && !state.topic.floorInput) {
@@ -61,11 +66,19 @@ export function handleTopicMode(context: RuntimeContext, key: string, keyAction:
     render();
     return;
   }
-  if (key === "a" || keyAction === "topic.like-post") {
+  if (key === "z") {
+    void openCurrentTopicBoard(context);
+    return;
+  }
+  if (keyAction === "topic.like-post") {
     void reactToCurrentTopicPost(context, true);
     return;
   }
-  if (key === "s" || keyAction === "topic.dislike-post") {
+  if (key === "x") {
+    void copyCurrentTopicLink(context);
+    return;
+  }
+  if (keyAction === "topic.dislike-post") {
     void reactToCurrentTopicPost(context, false);
     return;
   }
@@ -131,8 +144,48 @@ export function handleTopicMode(context: RuntimeContext, key: string, keyAction:
     return;
   }
   if (key === "r" && state.topic) {
-    void openTopic(client, state, state.topic.topicId, render, config, true, nextSignal());
+    void openTopic(client, state, state.topic.topicId, render, config, true, nextSignal(), state.topic.board, false);
   }
+}
+
+function openComposeQuoteModal(context: RuntimeContext): void {
+  const { state, render } = context;
+  const topic = state.topic;
+  if (!topic) {
+    return;
+  }
+
+  const post = currentTopicPost(topic, state.scroll);
+  if (!post) {
+    state.status = "当前楼层没有可引用的内容";
+    render();
+    return;
+  }
+
+  openComposeModal(context, {
+    initialDraft: buildQuotedReplyDraft(topic.topicId, post)
+  });
+}
+
+function buildQuotedReplyDraft(topicId: number, post: NonNullable<TuiState["topic"]>["posts"][number]): string {
+  const floor = post.floor ?? "?";
+  const time = post.rawTime || post.time;
+  const url = buildQuotedPostUrl(topicId, post.floor);
+  return `[quote][b]以下是引用${floor}楼：用户${post.author}在${time}的发言：[color=blue][url=${url}]>>查看原帖<<[/url][/color][/b]
+${post.rawContent}[/quote]`;
+}
+
+function buildQuotedPostUrl(topicId: number, floor: number | undefined): string {
+  if (!floor || floor <= 0) {
+    return `/topic/${topicId}`;
+  }
+  if (floor <= 10) {
+    return `/topic/${topicId}#${floor}`;
+  }
+
+  const page = Math.floor((floor - 1) / 10) + 1;
+  const anchorFloor = floor % 10 || 10;
+  return `/topic/${topicId}/${page}#${anchorFloor}`;
 }
 
 export function isAtTopicEnd(state: TuiState, config: TuiConfig, totalRows: number): boolean {
@@ -232,6 +285,78 @@ async function openCurrentPostUserProfile(context: RuntimeContext): Promise<void
   }
 
   await openUserProfile(client, state, post.userId, render, false, nextSignal());
+}
+
+async function openCurrentTopicBoard(context: RuntimeContext): Promise<void> {
+  const { state, client, render, nextSignal } = context;
+  const board = state.topic?.board ?? state.currentBoard;
+  if (!board) {
+    state.status = "当前帖子没有可打开的版面";
+    render();
+    return;
+  }
+
+  await openBoard(client, state, board.boardId, board.title || `#${board.boardId}`, render, false, nextSignal());
+}
+
+async function copyCurrentTopicLink(context: RuntimeContext): Promise<void> {
+  const { state, render } = context;
+  const topicId = state.topic?.topicId;
+  if (!topicId) {
+    state.status = "当前帖子没有可复制的链接";
+    render();
+    return;
+  }
+
+  const url = `https://www.cc98.org/topic/${topicId}`;
+  try {
+    await copyToClipboard(url);
+    showNotification(state, "已复制帖子链接");
+    state.status = url;
+  } catch (error) {
+    state.error = error instanceof Error ? error.message : String(error);
+    state.status = `复制失败：${url}`;
+  } finally {
+    render();
+  }
+}
+
+async function copyToClipboard(value: string): Promise<void> {
+  if (process.platform === "darwin") {
+    await pipeClipboardInput("pbcopy", [], value);
+    return;
+  }
+  if (process.platform === "win32") {
+    await pipeClipboardInput("clip", [], value);
+    return;
+  }
+
+  try {
+    await pipeClipboardInput("wl-copy", [], value);
+  } catch {
+    await pipeClipboardInput("xclip", ["-selection", "clipboard"], value);
+  }
+}
+
+function pipeClipboardInput(command: string, args: string[], value: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ["pipe", "ignore", "pipe"] });
+    let stderr = "";
+
+    child.on("error", reject);
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(stderr.trim() || `${command} exited with code ${code ?? "unknown"}`));
+    });
+
+    child.stdin.end(value);
+  });
 }
 
 async function toggleCurrentTopicFavorite(context: RuntimeContext): Promise<void> {

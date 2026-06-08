@@ -193,6 +193,59 @@ export function noticeItems(type: NoticeType, values: unknown[]): ContentItem[] 
   }
 }
 
+export async function loadNoticeItems(
+  client: CachedCc98Client,
+  type: NoticeType,
+  values: unknown[],
+  force: boolean,
+  signal?: AbortSignal
+): Promise<ContentItem[]> {
+  if (type === "system") {
+    return noticeItems(type, values);
+  }
+
+  const notices = values.map((value) => asObject(value));
+  const topicIds = [...new Set(
+    notices
+      .map((notice) => asNumber(notice.topicId ?? notice.TopicId))
+      .filter((id): id is number => id !== undefined)
+  )];
+  const topics = topicIds.length > 0 ? asArray(await client.getBasicTopics(topicIds, force, signal)) : [];
+  const topicMap = new Map<number, Record<string, unknown>>();
+  for (const topicRaw of topics) {
+    const topic = asObject(topicRaw);
+    const topicId = asNumber(topic.id ?? topic.Id);
+    if (topicId !== undefined) {
+      topicMap.set(topicId, topic);
+    }
+  }
+
+  const boardIds = [...new Set(
+    notices.map((notice) => {
+      const topicId = asNumber(notice.topicId ?? notice.TopicId);
+      const topic = topicId !== undefined ? topicMap.get(topicId) : undefined;
+      return asNumber(notice.boardId ?? notice.BoardId ?? topic?.boardId ?? topic?.BoardId);
+    }).filter((id): id is number => id !== undefined && id > 0)
+  )];
+  const boardMap = new Map<number, string>();
+  await mapLimit(boardIds, 4, async (boardId) => {
+    try {
+      const board = asObject(await client.getBoardInfo(boardId, force, signal));
+      const boardName = normalizeInlineText(String(board.name ?? board.title ?? "")).trim();
+      if (boardName) {
+        boardMap.set(boardId, boardName);
+      }
+    } catch {
+      // Leave board name unresolved when the board is gone or inaccessible.
+    }
+  });
+
+  const enriched = notices.map((notice) => enrichThreadNotice(notice, topicMap, boardMap));
+  return type === "reply"
+    ? enriched.map((notice) => replyNoticeItem(notice))
+    : enriched.map((notice) => atNoticeItem(notice));
+}
+
 export function overviewStats(index: Record<string, unknown>, unread: Record<string, unknown>): ContentItem[] {
   const unreadTotal = ["systemCount", "atCount", "replyCount", "messageCount"].reduce((total, key) => {
     const value = unread[key];
@@ -272,15 +325,15 @@ export async function loadFeedPageItems(
     }
     case "notifications-system": {
       const notices = asArray(await client.getNotices("system", feed.loaded, feed.size + 1, force, signal));
-      return { items: noticeItems("system", notices.slice(0, feed.size)), received: notices.length };
+      return { items: await loadNoticeItems(client, "system", notices.slice(0, feed.size), force, signal), received: notices.length };
     }
     case "notifications-at": {
       const notices = asArray(await client.getNotices("at", feed.loaded, feed.size + 1, force, signal));
-      return { items: noticeItems("at", notices.slice(0, feed.size)), received: notices.length };
+      return { items: await loadNoticeItems(client, "at", notices.slice(0, feed.size), force, signal), received: notices.length };
     }
     case "notifications-reply": {
       const notices = asArray(await client.getNotices("reply", feed.loaded, feed.size + 1, force, signal));
-      return { items: noticeItems("reply", notices.slice(0, feed.size)), received: notices.length };
+      return { items: await loadNoticeItems(client, "reply", notices.slice(0, feed.size), force, signal), received: notices.length };
     }
     case "messages": {
       const chats = asArray(await client.getRecentChats(feed.loaded, feed.size + 1, force, signal));
@@ -325,7 +378,9 @@ function noticeCategoryItem(type: NoticeType, title: string, unread: unknown, de
     title,
     meta: count > 0 ? `${count} 条未读` : "已读完",
     detail,
-    action: `notice.${type}`
+    action: `notice.${type}`,
+    unread: count > 0,
+    unreadCount: Math.max(0, count)
   };
 }
 
@@ -336,8 +391,13 @@ function replyNoticeItem(value: unknown): ContentItem {
   const userId = asNumber(notice.userId ?? notice.UserId);
   const boardTitle = normalizeInlineText(String(notice.boardName ?? notice.BoardName ?? "")).trim();
   const userName = normalizeInlineText(String(notice.userName ?? notice.UserName ?? "")).trim() || "有人";
-  const topicTitle = normalizeInlineText(String(notice.topicTitle ?? notice.TopicTitle ?? `#${topicId ?? ""}`)).trim();
+  const topicTitle = normalizeInlineText(String(
+    notice.topicTitle
+    ?? notice.TopicTitle
+    ?? "未知主题（该主题已被删除或者无权限获取）"
+  )).trim();
   const floor = asNumber(notice.floor ?? notice.Floor);
+  const isRead = notice.isRead ?? notice.IsRead;
 
   return {
     title: topicTitle || `${userName} 回复了你`,
@@ -353,7 +413,8 @@ function replyNoticeItem(value: unknown): ContentItem {
     boardId,
     boardTitle: boardTitle || undefined,
     userId,
-    sortTime: timestampOf(notice.time ?? notice.Time)
+    sortTime: timestampOf(notice.time ?? notice.Time),
+    unread: isRead === false
   };
 }
 
@@ -364,8 +425,13 @@ function atNoticeItem(value: unknown): ContentItem {
   const userId = asNumber(notice.userId ?? notice.UserId);
   const boardTitle = normalizeInlineText(String(notice.boardName ?? notice.BoardName ?? "")).trim();
   const userName = normalizeInlineText(String(notice.userName ?? notice.UserName ?? "")).trim() || "有人";
-  const topicTitle = normalizeInlineText(String(notice.topicTitle ?? notice.TopicTitle ?? `#${topicId ?? ""}`)).trim();
+  const topicTitle = normalizeInlineText(String(
+    notice.topicTitle
+    ?? notice.TopicTitle
+    ?? "未知主题（该主题已被删除或者无权限获取）"
+  )).trim();
   const floor = asNumber(notice.floor ?? notice.Floor);
+  const isRead = notice.isRead ?? notice.IsRead;
 
   return {
     title: topicTitle || `${userName} @了你`,
@@ -381,7 +447,8 @@ function atNoticeItem(value: unknown): ContentItem {
     boardId,
     boardTitle: boardTitle || undefined,
     userId,
-    sortTime: timestampOf(notice.time ?? notice.Time)
+    sortTime: timestampOf(notice.time ?? notice.Time),
+    unread: isRead === false
   };
 }
 
@@ -391,6 +458,7 @@ function systemNoticeItem(value: unknown): ContentItem {
   const title = normalizeInlineText(String(notice.title ?? notice.Title ?? "系统通知")).trim() || "系统通知";
   const content = normalizePreview(String(notice.content ?? notice.Content ?? ""));
   const floor = asNumber(notice.floor ?? notice.Floor);
+  const isRead = notice.isRead ?? notice.IsRead;
 
   return {
     title,
@@ -401,6 +469,42 @@ function systemNoticeItem(value: unknown): ContentItem {
     ].filter(Boolean).join(" · "),
     detail: content || "查看系统通知详情",
     topicId,
-    sortTime: timestampOf(notice.time ?? notice.Time)
+    sortTime: timestampOf(notice.time ?? notice.Time),
+    unread: isRead === false
+  };
+}
+
+function enrichThreadNotice(
+  notice: Record<string, unknown>,
+  topicMap: Map<number, Record<string, unknown>>,
+  boardMap: Map<number, string>
+): Record<string, unknown> {
+  const topicId = asNumber(notice.topicId ?? notice.TopicId);
+  const topic = topicId !== undefined ? topicMap.get(topicId) : undefined;
+  const postBasicInfo = asObject(notice.postBasicInfo ?? notice.PostBasicInfo);
+  const boardId = asNumber(notice.boardId ?? notice.BoardId ?? topic?.boardId ?? topic?.BoardId);
+  const boardName = normalizeInlineText(String(
+    notice.boardName
+    ?? notice.BoardName
+    ?? topic?.boardName
+    ?? topic?.BoardName
+    ?? (boardId !== undefined ? boardMap.get(boardId) : "")
+  )).trim();
+  const topicTitle = normalizeInlineText(String(
+    notice.topicTitle
+    ?? notice.TopicTitle
+    ?? topic?.title
+    ?? topic?.Title
+    ?? ""
+  )).trim();
+
+  return {
+    ...notice,
+    boardId,
+    boardName: boardName || undefined,
+    topicTitle: topicTitle || undefined,
+    floor: notice.floor ?? notice.Floor ?? postBasicInfo.floor ?? postBasicInfo.Floor ?? (topicId ? 1 : undefined),
+    userId: notice.userId ?? notice.UserId ?? postBasicInfo.userId ?? postBasicInfo.UserId ?? -1,
+    userName: notice.userName ?? notice.UserName ?? postBasicInfo.userName ?? postBasicInfo.UserName ?? "有人"
   };
 }

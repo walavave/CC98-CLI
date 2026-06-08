@@ -45,6 +45,13 @@ export function restorePreviousView(state: TuiState): void {
   }
 }
 
+export function pushCurrentViewSnapshot(state: TuiState): void {
+  state.history.push(snapshotCurrentView(state));
+  if (state.history.length > state.historyLimit) {
+    state.history = [];
+  }
+}
+
 export function prepareListView(
   state: TuiState,
   options: {
@@ -57,10 +64,7 @@ export function prepareListView(
   }
 ): void {
   if (options.pushParent) {
-    state.history.push(snapshotCurrentView(state));
-    if (state.history.length > state.historyLimit) {
-      state.history = [];
-    }
+    pushCurrentViewSnapshot(state);
   }
 
   state.mode = "list";
@@ -108,6 +112,7 @@ function snapshotCurrentList(state: TuiState): ListSnapshot {
     title: state.viewTitle,
     items: state.items,
     itemIndex: state.itemIndex,
+    scroll: state.scroll,
     status: state.status,
     currentBoard: state.currentBoard,
     currentFeed: state.currentFeed,
@@ -135,6 +140,7 @@ function applyListSnapshot(state: TuiState, snapshot: ListSnapshot): void {
   state.viewTitle = snapshot.title;
   state.items = snapshot.items;
   state.itemIndex = snapshot.itemIndex;
+  state.scroll = snapshot.scroll;
   state.status = snapshot.status;
 }
 

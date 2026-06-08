@@ -101,14 +101,14 @@ function openFollowingSelectedItem(context: RuntimeContext): boolean {
   const { state, render, client, config, nextSignal } = context;
   const selected = state.items[state.itemIndex];
   if (selected?.topicId !== undefined) {
-    const boardContext = selected.boardId !== undefined && selected.boardTitle
+    const boardContext = selected.boardId !== undefined
       ? { boardId: selected.boardId, title: selected.boardTitle }
       : state.currentBoard;
     void openTopic(client, state, selected.topicId, render, config, true, nextSignal(), boardContext);
     return true;
   }
   if (selected?.boardId !== undefined) {
-    void openBoard(client, state, selected.boardId, selected.title, render, false, nextSignal());
+    void openBoard(client, state, selected.boardId, selected.title || `#${selected.boardId}`, render, false, nextSignal());
     return true;
   }
   if (selected?.chatUserId !== undefined) {

@@ -1,11 +1,15 @@
 import { checkForUpdate } from "../../update.js";
 import { createLoginForm, isPrintableInput, updateLoginField } from "../account-modal.js";
-import { emotionCategories, getEmotionCategory } from "../emotion-catalog.js";
-import { graphemes } from "../text.js";
+import { emotionCategories, getEmotionCategory } from "../media/emotion-catalog.js";
+import { graphemes } from "../render-core/text.js";
 import { getDefaultAccountName, normalizeLoginMessage, refreshAccounts } from "../data/accounts.js";
 import { getStatus } from "../tui-model.js";
 import type { RuntimeContext } from "./context.js";
 import { showNotification } from "./state.js";
+
+interface OpenComposeOptions {
+  initialDraft?: string;
+}
 
 export function handleAccountModal(context: RuntimeContext, key: string): void {
   const { state, render, tokenStore, load, client } = context;
@@ -262,7 +266,7 @@ export function requestLogout(context: RuntimeContext): void {
   render();
 }
 
-export function openComposeModal(context: RuntimeContext): void {
+export function openComposeModal(context: RuntimeContext, options: OpenComposeOptions = {}): void {
   const { state, render } = context;
   const target = state.currentChat
     ? { kind: "chat" as const, userId: state.currentChat.userId, title: state.currentChat.title }
@@ -272,11 +276,13 @@ export function openComposeModal(context: RuntimeContext): void {
   if (!target) {
     return;
   }
+  const draft = options.initialDraft ?? "";
+  const draftUnits = graphemes(draft);
   state.composeDialog = {
     target,
-    draft: "",
-    draftUnits: [],
-    cursorIndex: 0,
+    draft,
+    draftUnits,
+    cursorIndex: draftUnits.length,
     submitting: false,
     emotionCategoryIndex: 0,
     emotionSelectedIndex: 0,
