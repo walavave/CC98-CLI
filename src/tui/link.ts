@@ -1,16 +1,31 @@
-import { ansi } from "./render-core/ansi.js";
-
-import { stripAnsi } from "./render-core/ansi.js";
+import { ansi, stripAnsi } from "./render-core/ansi.js";
+import { clusterCellWidth, graphemes } from "./render-core/text.js";
 
 export const internalLinkStartPrefix = "@@CC98_LINK_START:";
 export const internalLinkEndMarker = "@@CC98_LINK_END@@";
+
+const plainHttpUrlPattern = /(?:https?:\/\/|\/topic\/)[^\s<>"）】)\]]+/i;
+const trailingLinkPunctuationPattern = /[.,!?;:'"】）)\]]$/;
+const plainLinkMatchPattern = /(?:^|[\s(（<])(https?:\/\/[^\s<>"）】)\]]+)/gi;
+const ansiSequencePattern = /^\x1b\[[0-9;?]*[A-Za-z]/;
+const internalLinkStartPattern = new RegExp(`^${escapeRegExp(internalLinkStartPrefix)}(\\d+)@@`);
+const internalLinkMarkupPattern = new RegExp(
+  `${escapeRegExp(internalLinkStartPrefix)}\\d+@@|${escapeRegExp(internalLinkEndMarker)}`,
+  "g"
+);
+
+export interface InlineLinkSpan {
+  index: number;
+  start: number;
+  end: number;
+}
 
 export function extractFirstHttpUrl(value: string | undefined): string | undefined {
   if (!value) {
     return undefined;
   }
   const plain = stripAnsi(value);
-  const match = plain.match(/(?:https?:\/\/|\/topic\/)[^\s<>"）】)\]]+/i);
+  const match = plain.match(plainHttpUrlPattern);
   return trimTrailingLinkPunctuation(match?.[0]);
 }
 
@@ -19,7 +34,7 @@ export function trimTrailingLinkPunctuation(value: string | undefined): string |
     return undefined;
   }
   let next = value;
-  while (next && /[.,!?;:'"】）)\]]$/.test(next)) {
+  while (next && trailingLinkPunctuationPattern.test(next)) {
     next = next.slice(0, -1);
   }
   return next || undefined;
@@ -89,34 +104,91 @@ export function parseCc98TopicLink(value: string): Cc98TopicLinkTarget | undefin
 export function renderLink(url: string, label: string | undefined, links: string[]): string {
   const cleanUrl = normalizeLinkUrl(url);
   const cleanLabel = label?.trim();
-  if (!isDownloadLikeUrl(cleanUrl)) {
-    links.push(cleanUrl);
-    const index = links.length;
-    const rendered = !cleanLabel || cleanLabel === cleanUrl
-      ? cleanUrl
-      : `${cleanLabel} ${cleanUrl}`;
-    return wrapInteractiveLink(index, underline(rendered));
-  }
   links.push(cleanUrl);
-  const download = underline("[点击下载]");
+  const index = links.length;
+  if (!isDownloadLikeUrl(cleanUrl)) {
+    return wrapInteractiveLink(index, underline(cleanLabel || cleanUrl));
+  }
   const displayLabel = cleanLabel || fileLabel(cleanUrl);
-  return `${displayLabel} ${download}`.trim();
+  return `${displayLabel} ${wrapInteractiveLink(index, underline("[点击下载]"))}`.trim();
 }
 
 export function replacePlainLinks(value: string, links: string[]): string {
-  return value.replace(/(^|[\s(（<])((?:https?:\/\/)[^\s<>"\])）]+)/gi, (match, prefix: string, rawUrl: string) => {
-    const url = trimTrailingLinkPunctuation(rawUrl);
-    if (!url) {
-      return match;
+  let output = "";
+  let cursor = 0;
+
+  while (cursor < value.length) {
+    const internalStart = value.indexOf(internalLinkStartPrefix, cursor);
+    if (internalStart >= 0) {
+      const plainMatch = findNextPlainUrl(value, cursor);
+      if (!plainMatch || internalStart < plainMatch.matchStart) {
+        output += value.slice(cursor, internalStart);
+        const internalEnd = value.indexOf(internalLinkEndMarker, internalStart);
+        const nextCursor = internalEnd < 0 ? value.length : internalEnd + internalLinkEndMarker.length;
+        output += value.slice(internalStart, nextCursor);
+        cursor = nextCursor;
+        continue;
+      }
     }
-    const cleanUrl = normalizeLinkUrl(url);
-    if (!isDownloadLikeUrl(cleanUrl)) {
-      links.push(cleanUrl);
-      return `${prefix}${wrapInteractiveLink(links.length, underline(cleanUrl))}`;
+
+    const match = findNextPlainUrl(value, cursor);
+    if (!match) {
+      output += value.slice(cursor);
+      break;
     }
-    links.push(cleanUrl);
-    return `${prefix}${fileLabel(cleanUrl)} ${underline("[点击下载]")}`;
-  });
+
+    output += value.slice(cursor, match.matchStart);
+    output += match.prefix;
+    output += renderLink(match.url, undefined, links);
+    cursor = match.end;
+  }
+
+  return output;
+}
+
+export function stripInternalLinkMarkup(value: string): string {
+  return value.replace(internalLinkMarkupPattern, "");
+}
+
+export function extractInlineLinkSpans(value: string): { text: string; spans: InlineLinkSpan[] } {
+  const spans: InlineLinkSpan[] = [];
+  let text = "";
+  let column = 0;
+  let cursor = 0;
+  let activeLinkIndex: number | undefined;
+  let activeLinkStart = 0;
+
+  while (cursor < value.length) {
+    const remainder = value.slice(cursor);
+    const linkStart = internalLinkStartPattern.exec(remainder);
+    if (linkStart) {
+      activeLinkIndex = Number(linkStart[1]);
+      activeLinkStart = column;
+      cursor += linkStart[0].length;
+      continue;
+    }
+    if (remainder.startsWith(internalLinkEndMarker)) {
+      if (activeLinkIndex !== undefined && column > activeLinkStart) {
+        spans.push({ index: activeLinkIndex, start: activeLinkStart, end: column });
+      }
+      activeLinkIndex = undefined;
+      cursor += internalLinkEndMarker.length;
+      continue;
+    }
+    const ansiMatch = ansiSequencePattern.exec(remainder);
+    if (ansiMatch) {
+      text += ansiMatch[0];
+      cursor += ansiMatch[0].length;
+      continue;
+    }
+
+    const next = graphemes(value.slice(cursor))[0] ?? value[cursor] ?? "";
+    text += next;
+    column += clusterCellWidth(next);
+    cursor += next.length;
+  }
+
+  return { text, spans };
 }
 
 function underline(value: string): string {
@@ -125,6 +197,33 @@ function underline(value: string): string {
 
 function wrapInteractiveLink(index: number, value: string): string {
   return `${internalLinkStartPrefix}${index}@@${value}${internalLinkEndMarker}`;
+}
+
+function findNextPlainUrl(
+  value: string,
+  from: number
+): { matchStart: number; end: number; prefix: string; url: string } | undefined {
+  plainLinkMatchPattern.lastIndex = from;
+  let match: RegExpExecArray | null;
+
+  while ((match = plainLinkMatchPattern.exec(value)) !== null) {
+    const rawUrl = trimTrailingLinkPunctuation(match[1]);
+    if (!rawUrl) {
+      continue;
+    }
+    const full = match[0] ?? "";
+    const prefix = full.slice(0, full.length - match[1].length);
+    const matchStart = match.index;
+    const start = matchStart + prefix.length;
+    return {
+      matchStart,
+      end: start + match[1].length,
+      prefix,
+      url: normalizeLinkUrl(rawUrl)
+    };
+  }
+
+  return undefined;
 }
 
 function fileLabel(value: string): string {
@@ -149,6 +248,10 @@ function resolveTopicFloor(page: number | undefined, hashFloor: number | undefin
     return hashFloor;
   }
   return (page - 1) * 10 + hashFloor;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 const downloadLikeExtensions = new Set([

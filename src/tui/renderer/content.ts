@@ -379,16 +379,30 @@ function renderListTitleRow(
   focused: boolean,
   isUnread: boolean
 ): string {
+  const content = fit(title, width);
   if (active) {
-    if (isUnread) {
-      return styled(fit(title, width), `${theme.color.selectedBg}${theme.color.notice}${ansi.bold}`);
-    }
-    return selectedLine(title, width, focused);
+    const style = focused
+      ? isUnread
+        ? `${theme.color.selectedBg}${theme.color.notice}${ansi.bold}`
+        : `${theme.color.selectedBg}${theme.color.selectedFg}${ansi.bold}`
+      : theme.color.primarySoft;
+    return renderGenderStyledLine(content, style);
   }
   if (isUnread) {
-    return textStyle.noticeBold(title);
+    return renderGenderStyledLine(content, `${theme.color.notice}${ansi.bold}`);
   }
-  return textStyle.muted(title);
+  return renderGenderStyledLine(content, theme.color.muted);
+}
+
+function renderGenderStyledLine(content: string, lineStyle: string): string {
+  const rendered = styled(content, lineStyle);
+  if (content.includes("♀ ")) {
+    return rendered.replace("♀", `${theme.color.female}${ansi.bold}♀${lineStyle}`);
+  }
+  if (content.includes("♂ ")) {
+    return rendered.replace("♂", `${theme.color.male}${ansi.bold}♂${lineStyle}`);
+  }
+  return rendered;
 }
 
 function getListItemHeight(

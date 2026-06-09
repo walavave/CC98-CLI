@@ -4,7 +4,7 @@ import { extractFirstHttpUrl, isDownloadLikeUrl, parseCc98TopicLink, shortUrl } 
 import { fill, length, pad, rect, split } from "../render-core/layout.js";
 import { getRenderedListItemIndexAtRow, getRenderedSearchItemIndexAtRow, getSidebarWidth } from "../renderer.js";
 import { cellWidth } from "../render-core/text.js";
-import { getStatus, navItems, settingsItems } from "../tui-model.js";
+import { getStatus, navItems, settingsItems, type TopicLineEntry } from "../tui-model.js";
 import type { MouseEvent } from "../render-core/terminal.js";
 import type { RuntimeContext } from "./context.js";
 import { jumpToTopicFloor, openTopic } from "../data/topic.js";
@@ -34,11 +34,18 @@ export async function handleTopicClick(
     return;
   }
 
-  const absoluteLine = state.scroll + bodyLineIndex;
+  const viewport = Math.max(0, mainArea.height - 4);
+  if (bodyLineIndex >= viewport) {
+    return;
+  }
+  const maxScroll = Math.max(0, state.topic.lines.length - viewport);
+  const visibleScroll = Math.min(state.scroll, maxScroll);
+  const absoluteLine = visibleScroll + bodyLineIndex;
+  const clickedContentColumn = event.column - 1 - mainArea.x - 1;
   const lineEntry = state.topic.posts
     .flatMap((post) => post.lines)
     .find((entry) => entry.line === absoluteLine);
-  const url = lineEntry?.linkUrl ?? extractFirstHttpUrl(lineEntry?.text) ?? lineEntry?.imageUrl;
+  const url = resolveClickedTopicUrl(lineEntry, clickedContentColumn);
   if (!url) {
     return;
   }
@@ -87,6 +94,19 @@ export async function handleTopicClick(
   } finally {
     render();
   }
+}
+
+function resolveClickedTopicUrl(lineEntry: TopicLineEntry | undefined, clickedColumn: number): string | undefined {
+  if (!lineEntry) {
+    return undefined;
+  }
+  if (lineEntry.linkSpans && clickedColumn >= 0) {
+    const matchedSpan = lineEntry.linkSpans.find((span) => clickedColumn >= span.start && clickedColumn < span.end);
+    if (matchedSpan) {
+      return matchedSpan.url;
+    }
+  }
+  return lineEntry.imageUrl ?? extractFirstHttpUrl(lineEntry.text);
 }
 
 async function openExternalUrl(url: string): Promise<void> {

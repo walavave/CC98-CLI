@@ -133,10 +133,11 @@ export function buildUserProfileItems(profile: Record<string, unknown>): Content
   const name = String(profile.name ?? profile.userName ?? (userId !== undefined ? `#${userId}` : "用户")).trim() || "用户";
   const group = String(profile.displayTitle ?? profile.privilege ?? profile.levelTitle ?? "").trim();
   const introduction = normalizePreview(String(profile.introduction ?? ""));
+  const title = `${renderUserGenderPrefix(profile)}${name}`;
 
   return [
     {
-      title: name,
+      title,
       meta: [userId !== undefined ? `#${userId}` : undefined, group || undefined].filter(Boolean).join(" · "),
       detail: introduction || "这个用户没有留下简介。"
     },
@@ -150,6 +151,24 @@ export function buildUserProfileItems(profile: Record<string, unknown>): Content
     item("注册时间", formatTime(profile.registerTime)),
     item("最后登录", formatTime(profile.lastLogOnTime))
   ];
+}
+
+function renderUserGenderPrefix(profile: Record<string, unknown>): string {
+  const raw = profile.forum ?? profile.Forum ?? profile.gender ?? profile.Gender ?? profile.sex ?? profile.Sex;
+  if (raw === undefined || raw === null) {
+    return "";
+  }
+  const normalized = String(raw).trim().toLowerCase();
+  if (!normalized) {
+    return "";
+  }
+  if (normalized === "女" || normalized === "female" || normalized === "f" || normalized === "2") {
+    return "♀ ";
+  }
+  if (normalized === "男" || normalized === "male" || normalized === "m" || normalized === "1") {
+    return "♂ ";
+  }
+  return "";
 }
 
 export function describeUserProfileStatus(state: TuiState): string {

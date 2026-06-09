@@ -231,6 +231,12 @@ export interface TopicLineEntry {
   imageBlockRows?: number;
   linkIndex?: number;
   linkUrl?: string;
+  linkSpans?: Array<{
+    index: number;
+    start: number;
+    end: number;
+    url: string;
+  }>;
 }
 
 export const navItems: NavItem[] = [

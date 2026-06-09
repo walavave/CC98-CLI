@@ -16,6 +16,7 @@ import { renderMarkdownToLines, renderUbbToLines } from "../media/ubb-renderer.j
 import { CachedCc98Client } from "../cached-client.js";
 import type { TuiConfig } from "../../config.js";
 import { asArray, asBoolean, asNumber, asObject, isAbortError, normalizeInlineText } from "./utils.js";
+import { extractInlineLinkSpans, stripInternalLinkMarkup } from "../link.js";
 
 export async function openTopic(
   client: CachedCc98Client,
@@ -424,23 +425,22 @@ function renderPosts(
       : renderUbbToLines(content, contentWidth, {
         imagePreviewRows: config.previewImages ? imagePreviewRows : 0
       });
-    let nextRenderedLinkIndex = 1;
     rendered.lines.forEach((renderedLine, index) => {
-      const displayLine = stripInternalLinkMarker(renderedLine);
+      const { text: displayLine, spans } = extractInlineLinkSpans(renderedLine);
       const imageIndex = parseBracketIndex(renderedLine, "image");
-      const explicitLinkIndex = parseBracketIndex(renderedLine, "link");
-      const linkIndex = explicitLinkIndex ?? (displayLine.includes("[点击下载]") ? nextRenderedLinkIndex : undefined);
-      if (explicitLinkIndex !== undefined) {
-        nextRenderedLinkIndex = explicitLinkIndex + 1;
-      } else if (linkIndex !== undefined) {
-        nextRenderedLinkIndex += 1;
-      }
-      const imageBlockRows = imageIndex !== undefined ? imageBlockHeight(rendered.lines.map(stripInternalLinkMarker), index) : undefined;
+      const linkSpans = spans
+        .map((span) => {
+          const url = rendered.links[span.index - 1];
+          return url ? { ...span, url } : undefined;
+        })
+        .filter((span): span is NonNullable<typeof span> => span !== undefined);
+      const firstLinkSpan = linkSpans[0];
+      const imageBlockRows = imageIndex !== undefined ? imageBlockHeight(rendered.lines.map(stripInternalLinkMarkup), index) : undefined;
       const kind = displayLine.trim() === ""
         ? "blank"
         : imageIndex !== undefined
           ? "image"
-          : linkIndex !== undefined
+          : linkSpans.length > 0
             ? "link"
             : displayLine.startsWith(theme.quote.prefix)
               ? "quote"
@@ -449,15 +449,16 @@ function renderPosts(
         imageIndex,
         imageUrl: imageIndex !== undefined ? rendered.images[imageIndex - 1] : undefined,
         imageBlockRows,
-        linkIndex,
-        linkUrl: linkIndex !== undefined ? rendered.links[linkIndex - 1] : undefined
+        linkIndex: firstLinkSpan?.index,
+        linkUrl: firstLinkSpan?.url,
+        linkSpans
       });
     });
     push("", "blank");
     const preview = rendered.lines.find((value) =>
       value.trim() &&
       !value.startsWith("[image ") &&
-      !value.startsWith("[link ")
+      stripInternalLinkMarkup(value).trim()
     ) ?? "";
     entries.push({
       id: asNumber(post.id),
@@ -563,10 +564,6 @@ function rebuildTopicLines(topic: TopicReaderState): void {
 function parseBracketIndex(value: string, label: "image" | "link"): number | undefined {
   const match = new RegExp(`\\[${label} (\\d+)`).exec(value);
   return match ? Number(match[1]) : undefined;
-}
-
-function stripInternalLinkMarker(value: string): string {
-  return value.replace(/\[link \d+\]/g, "");
 }
 
 function formatRating(post: Record<string, unknown>): string | undefined {

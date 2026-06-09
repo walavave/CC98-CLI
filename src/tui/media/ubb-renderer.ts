@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { emotionPreviewRows } from "./emotion-preview.js";
 import { internalLinkEndMarker, internalLinkStartPrefix, renderLink, replacePlainLinks, shortUrl } from "../link.js";
+import { stripAnsi } from "../render-core/ansi.js";
 import { theme } from "../render-core/theme.js";
 
 export interface RenderedPost {
@@ -348,15 +349,15 @@ function wrapLines(value: string, width: number): string[] {
     let current = "";
     let currentWidth = 0;
     let activeLinkIndex: number | undefined;
-    let currentLineLinkIndex: number | undefined;
     for (const token of splitRenderableTokens(content)) {
       const linkStart = parseInternalLinkStart(token);
       if (linkStart !== undefined) {
         activeLinkIndex = linkStart;
-        currentLineLinkIndex ??= linkStart;
+        current += token;
         continue;
       }
       if (token === internalLinkEndMarker) {
+        current += token;
         activeLinkIndex = undefined;
         continue;
       }
@@ -365,41 +366,79 @@ function wrapLines(value: string, width: number): string[] {
         for (const char of token) {
           const nextWidth = charWidth(char);
           if (currentWidth + nextWidth > contentWidthLimit) {
-            lines.push(formatWrappedLine(quotePrefix, current, currentLineLinkIndex));
-            current = char;
+            lines.push(formatWrappedLine(quotePrefix, current, activeLinkIndex));
+            current = activeLinkIndex !== undefined ? reopenWrappedLink(activeLinkIndex) : "";
+            current += char;
             currentWidth = nextWidth;
-            currentLineLinkIndex = activeLinkIndex;
           } else {
             current += char;
             currentWidth += nextWidth;
-            currentLineLinkIndex ??= activeLinkIndex;
           }
         }
         continue;
       }
       if (currentWidth > 0 && currentWidth + tokenWidth > contentWidthLimit) {
-        lines.push(formatWrappedLine(quotePrefix, current, currentLineLinkIndex));
-        current = token;
+        lines.push(formatWrappedLine(quotePrefix, current, activeLinkIndex));
+        current = activeLinkIndex !== undefined ? reopenWrappedLink(activeLinkIndex) : "";
+        current += token;
         currentWidth = tokenWidth;
-        currentLineLinkIndex = activeLinkIndex;
         continue;
       }
       current += token;
       currentWidth += tokenWidth;
-      currentLineLinkIndex ??= activeLinkIndex;
     }
-    lines.push(formatWrappedLine(quotePrefix, current, currentLineLinkIndex));
+    lines.push(formatWrappedLine(quotePrefix, current, activeLinkIndex));
   }
 
   return lines;
 }
 
 function splitRenderableTokens(value: string): string[] {
-  const parts = value.match(new RegExp(
-    `${escapeRegExp(internalLinkStartPrefix)}\\d+@@|${escapeRegExp(internalLinkEndMarker)}|https?:\\/\\/[^\\s<>\"）】)\\]]+|.`,
-    "gu"
-  ));
-  return parts ?? [];
+  const tokens: string[] = [];
+  let cursor = 0;
+
+  while (cursor < value.length) {
+    const remainder = value.slice(cursor);
+    const linkStartMatch = new RegExp(`^${escapeRegExp(internalLinkStartPrefix)}\\d+@@`).exec(remainder);
+    if (linkStartMatch) {
+      tokens.push(linkStartMatch[0]);
+      cursor += linkStartMatch[0].length;
+      continue;
+    }
+    if (remainder.startsWith(internalLinkEndMarker)) {
+      tokens.push(internalLinkEndMarker);
+      cursor += internalLinkEndMarker.length;
+      continue;
+    }
+    const ansiMatch = /^\x1b\[[0-9;?]*[A-Za-z]/.exec(remainder);
+    if (ansiMatch) {
+      tokens.push(ansiMatch[0]);
+      cursor += ansiMatch[0].length;
+      continue;
+    }
+    if (/^https?:\/\//i.test(remainder)) {
+      let end = cursor;
+      while (end < value.length) {
+        if (value.startsWith(internalLinkEndMarker, end)) {
+          break;
+        }
+        const nextChar = value[end] ?? "";
+        if (nextChar === "\x1b" || /[\s<>"）】)\]]/u.test(nextChar)) {
+          break;
+        }
+        end += nextChar.length;
+      }
+      tokens.push(value.slice(cursor, end));
+      cursor = end;
+      continue;
+    }
+    const codePoint = value.codePointAt(cursor) ?? 0;
+    const nextChar = String.fromCodePoint(codePoint);
+    tokens.push(nextChar);
+    cursor += nextChar.length;
+  }
+
+  return tokens;
 }
 
 function parseInternalLinkStart(value: string): number | undefined {
@@ -407,14 +446,18 @@ function parseInternalLinkStart(value: string): number | undefined {
   return match ? Number(match[1]) : undefined;
 }
 
-function formatWrappedLine(quotePrefix: string, value: string, linkIndex: number | undefined): string {
-  const marker = linkIndex !== undefined ? `[link ${linkIndex}]` : "";
-  return `${quotePrefix}${marker}${value}`;
+function formatWrappedLine(quotePrefix: string, value: string, activeLinkIndex: number | undefined): string {
+  const content = activeLinkIndex !== undefined ? `${value}${internalLinkEndMarker}` : value;
+  return `${quotePrefix}${content}`;
+}
+
+function reopenWrappedLink(index: number): string {
+  return `${internalLinkStartPrefix}${index}@@`;
 }
 
 function textWidth(value: string): number {
   let width = 0;
-  for (const char of value) {
+  for (const char of stripAnsi(value)) {
     width += charWidth(char);
   }
   return width;
