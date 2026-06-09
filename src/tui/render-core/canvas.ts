@@ -158,7 +158,6 @@ export class Canvas {
         }
         continue;
       }
-
       const charWidth = cellWidth(cluster);
       if (cellX >= this.width || cellX >= x + width) {
         break;

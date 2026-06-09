@@ -213,6 +213,9 @@ export async function runTui(): Promise<void> {
   } finally {
     terminal.exit();
     if (exitRequested) {
+      if (config.tui.clearCacheOnExit) {
+        await client.clearCache();
+      }
       process.exit(0);
     }
   }

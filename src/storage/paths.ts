@@ -1,11 +1,9 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-
-const appDirName = ".cc98-cli";
+import { getPlatformDataDir } from "../platform/config-dir.js";
 
 export function getConfigDir(): string {
-  const xdgConfigHome = process.env.XDG_CONFIG_HOME;
-  return xdgConfigHome ? join(xdgConfigHome, "cc98-cli") : join(homedir(), appDirName);
+  return getPlatformDataDir();
 }
 
 export function getTokenFilePath(): string {

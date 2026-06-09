@@ -424,20 +424,28 @@ function renderPosts(
       : renderUbbToLines(content, contentWidth, {
         imagePreviewRows: config.previewImages ? imagePreviewRows : 0
       });
+    let nextRenderedLinkIndex = 1;
     rendered.lines.forEach((renderedLine, index) => {
+      const displayLine = stripInternalLinkMarker(renderedLine);
       const imageIndex = parseBracketIndex(renderedLine, "image");
-      const linkIndex = parseBracketIndex(renderedLine, "link");
-      const imageBlockRows = imageIndex !== undefined ? imageBlockHeight(rendered.lines, index) : undefined;
-      const kind = renderedLine.trim() === ""
+      const explicitLinkIndex = parseBracketIndex(renderedLine, "link");
+      const linkIndex = explicitLinkIndex ?? (displayLine.includes("[点击下载]") ? nextRenderedLinkIndex : undefined);
+      if (explicitLinkIndex !== undefined) {
+        nextRenderedLinkIndex = explicitLinkIndex + 1;
+      } else if (linkIndex !== undefined) {
+        nextRenderedLinkIndex += 1;
+      }
+      const imageBlockRows = imageIndex !== undefined ? imageBlockHeight(rendered.lines.map(stripInternalLinkMarker), index) : undefined;
+      const kind = displayLine.trim() === ""
         ? "blank"
         : imageIndex !== undefined
           ? "image"
           : linkIndex !== undefined
             ? "link"
-            : renderedLine.startsWith(theme.quote.prefix)
+            : displayLine.startsWith(theme.quote.prefix)
               ? "quote"
               : "text";
-      push(renderedLine, kind, {
+      push(displayLine, kind, {
         imageIndex,
         imageUrl: imageIndex !== undefined ? rendered.images[imageIndex - 1] : undefined,
         imageBlockRows,
@@ -555,6 +563,10 @@ function rebuildTopicLines(topic: TopicReaderState): void {
 function parseBracketIndex(value: string, label: "image" | "link"): number | undefined {
   const match = new RegExp(`\\[${label} (\\d+)`).exec(value);
   return match ? Number(match[1]) : undefined;
+}
+
+function stripInternalLinkMarker(value: string): string {
+  return value.replace(/\[link \d+\]/g, "");
 }
 
 function formatRating(post: Record<string, unknown>): string | undefined {

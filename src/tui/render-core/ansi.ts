@@ -11,7 +11,8 @@ export const ansi = {
   inverse: "\x1b[7m",
   dim: "\x1b[2m",
   bold: "\x1b[1m",
-  underline: "\x1b[4m"
+  underline: "\x1b[4m",
+  underlineOff: "\x1b[24m"
 } as const;
 
 export function moveTo(row: number, column: number): string {

@@ -1,10 +1,13 @@
+import { spawn } from "node:child_process";
 import { downloadUrlToDownloads } from "../media/downloads.js";
+import { extractFirstHttpUrl, isDownloadLikeUrl, parseCc98TopicLink, shortUrl } from "../link.js";
 import { fill, length, pad, rect, split } from "../render-core/layout.js";
 import { getRenderedListItemIndexAtRow, getRenderedSearchItemIndexAtRow, getSidebarWidth } from "../renderer.js";
 import { cellWidth } from "../render-core/text.js";
 import { getStatus, navItems, settingsItems } from "../tui-model.js";
 import type { MouseEvent } from "../render-core/terminal.js";
 import type { RuntimeContext } from "./context.js";
+import { jumpToTopicFloor, openTopic } from "../data/topic.js";
 import { loadFollowingKind, switchFollowingKind } from "../data/following.js";
 import { switchSearchKind } from "../data/search.js";
 import { enterContentMode, showNotification } from "./state.js";
@@ -35,8 +38,41 @@ export async function handleTopicClick(
   const lineEntry = state.topic.posts
     .flatMap((post) => post.lines)
     .find((entry) => entry.line === absoluteLine);
-  const url = lineEntry?.linkUrl ?? lineEntry?.imageUrl;
+  const url = lineEntry?.linkUrl ?? extractFirstHttpUrl(lineEntry?.text) ?? lineEntry?.imageUrl;
   if (!url) {
+    return;
+  }
+
+  const cc98Topic = parseCc98TopicLink(url);
+  if (cc98Topic) {
+    if (state.topic?.topicId === cc98Topic.topicId && cc98Topic.floor !== undefined) {
+      state.status = `正在跳转到 ${cc98Topic.floor} 楼...`;
+      render();
+      await jumpToTopicFloor(context.client, state, cc98Topic.floor, render, context.config, context.nextSignal());
+      return;
+    }
+    context.abortCurrent();
+    state.status = `正在打开帖子 #${cc98Topic.topicId}...`;
+    render();
+    await openTopic(context.client, state, cc98Topic.topicId, render, context.config, true, context.nextSignal());
+    if (cc98Topic.floor !== undefined) {
+      await jumpToTopicFloor(context.client, state, cc98Topic.floor, render, context.config, context.nextSignal());
+    }
+    return;
+  }
+
+  if (!isDownloadLikeUrl(url)) {
+    state.status = `正在打开 ${shortUrl(url)}...`;
+    render();
+
+    try {
+      await openExternalUrl(url);
+      showNotification(state, `已在浏览器打开 ${shortUrl(url)}`);
+    } catch (error) {
+      state.status = error instanceof Error ? error.message : "打开失败";
+    } finally {
+      render();
+    }
     return;
   }
 
@@ -51,6 +87,32 @@ export async function handleTopicClick(
   } finally {
     render();
   }
+}
+
+async function openExternalUrl(url: string): Promise<void> {
+  if (process.platform === "darwin") {
+    await runCommand("open", [url]);
+    return;
+  }
+  if (process.platform === "win32") {
+    await runCommand("cmd", ["/c", "start", "", url]);
+    return;
+  }
+  await runCommand("xdg-open", [url]);
+}
+
+function runCommand(command: string, args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: "ignore" });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`${command} exited with code ${code ?? "unknown"}`));
+    });
+  });
 }
 
 export function handleSidebarClick(
@@ -253,16 +315,6 @@ function withinRect(column: number, row: number, area: { x: number; y: number; w
   const x = column - 1;
   const y = row - 1;
   return x >= area.x && x < area.x + area.width && y >= area.y && y < area.y + area.height;
-}
-
-function shortUrl(value: string): string {
-  try {
-    const url = new URL(value);
-    const fileName = url.pathname.split("/").filter(Boolean).at(-1) ?? url.host;
-    return `${url.host}/${fileName}`;
-  } catch {
-    return value;
-  }
 }
 
 function getSearchKindAtColumn(

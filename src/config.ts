@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { getPlatformConfigDir } from "./platform/config-dir.js";
 
 export interface AppConfig {
   account: AccountConfig;
@@ -15,6 +15,7 @@ export interface TuiConfig {
   hideTopChrome: boolean;
   previewImages: boolean;
   navigationHistoryLimit: number;
+  clearCacheOnExit: boolean;
   postSignature: string;
 }
 
@@ -26,6 +27,7 @@ const defaultConfig: AppConfig = {
     hideTopChrome: false,
     previewImages: true,
     navigationHistoryLimit: 10,
+    clearCacheOnExit: true,
     postSignature: "[right][color=#808080]——来自终端应用[/color]「[b][url=https://github.com/walavave/CC98-CLI]CC98 CLI[/url][/b]」[/right]"
   }
 };
@@ -44,8 +46,7 @@ export function loadConfig(): AppConfig {
 }
 
 export function getConfigFilePath(): string {
-  const xdgConfigHome = process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config");
-  return join(xdgConfigHome, "cc98-cli", "config.toml");
+  return join(getPlatformConfigDir(), "config.toml");
 }
 
 function mergeConfig(base: AppConfig, parsed: Record<string, Record<string, unknown>>): AppConfig {
@@ -59,6 +60,7 @@ function mergeConfig(base: AppConfig, parsed: Record<string, Record<string, unkn
       hideTopChrome: booleanValue(tui.hide_top_chrome, base.tui.hideTopChrome),
       previewImages: booleanValue(tui.preview_images, base.tui.previewImages),
       navigationHistoryLimit: positiveIntegerValue(tui.navigation_history_limit, base.tui.navigationHistoryLimit),
+      clearCacheOnExit: booleanValue(tui.clear_cache_on_exit, base.tui.clearCacheOnExit),
       postSignature: stringValue(tui.post_signature, base.tui.postSignature)
     }
   };

@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { emotionPreviewRows } from "./emotion-preview.js";
+import { internalLinkEndMarker, internalLinkStartPrefix, renderLink, replacePlainLinks, shortUrl } from "../link.js";
 import { theme } from "../render-core/theme.js";
 
 export interface RenderedPost {
@@ -38,8 +39,7 @@ export function renderUbbToLines(content: string, width: number, options: Render
       const index = images.length;
       return imageBlock(index, cleanUrl, options.imagePreviewRows);
     }
-    links.push(cleanUrl);
-    return `[link ${links.length}: ${shortUrl(cleanUrl)}]`;
+    return renderLink(cleanUrl, undefined, links);
   });
 
   text = text.replace(/<img\b[^>]*\bsrc=(["']?)([^"'\s>]+)\1[^>]*>/gi, (_match, _quote: string, url: string) => {
@@ -50,15 +50,11 @@ export function renderUbbToLines(content: string, width: number, options: Render
   });
 
   text = text.replace(/\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi, (_match, url: string, label: string) => {
-    const cleanUrl = url.trim();
-    links.push(cleanUrl);
-    return `${stripUbb(label)} [link ${links.length}: ${shortUrl(cleanUrl)}]`;
+    return renderLink(url.trim(), stripUbb(label), links);
   });
 
   text = text.replace(/\[url\]([\s\S]*?)\[\/url\]/gi, (_match, url: string) => {
-    const cleanUrl = url.trim();
-    links.push(cleanUrl);
-    return `[link ${links.length}: ${shortUrl(cleanUrl)}]`;
+    return renderLink(url.trim(), undefined, links);
   });
 
   text = renderNestedUbbQuotes(text);
@@ -72,6 +68,7 @@ export function renderUbbToLines(content: string, width: number, options: Render
   text = normalizeMediaBlocks(text);
   text = stripUbb(text);
   text = decodeHtml(text);
+  text = replacePlainLinks(text, links);
 
   return {
     lines: wrapLines(text, width),
@@ -100,9 +97,7 @@ export function renderMarkdownToLines(content: string, width: number, options: R
   });
 
   text = text.replace(/\[([^\]]+)\]\(([^)\s]+(?:\s+"[^"]*")?)\)/g, (_match, label: string, target: string) => {
-    const cleanUrl = normalizeMarkdownTarget(target);
-    links.push(cleanUrl);
-    return `${label} [link ${links.length}: ${shortUrl(cleanUrl)}]`;
+    return renderLink(normalizeMarkdownTarget(target), label, links);
   });
 
   text = compactMarkdownQuoteMediaBlocks(text)
@@ -123,6 +118,7 @@ export function renderMarkdownToLines(content: string, width: number, options: R
   text = text.replace(/^\s*\d+\.\s+/gm, (match) => match.replace(/^\s*/, ""));
   text = normalizeMediaBlocks(text);
   text = decodeHtml(text);
+  text = replacePlainLinks(text, links);
 
   return {
     lines: wrapLines(text, width),
@@ -346,23 +342,82 @@ function wrapLines(value: string, width: number): string[] {
       continue;
     }
 
+    const quotePrefix = paragraph.startsWith(theme.quote.prefix) ? theme.quote.prefix : "";
+    const content = quotePrefix ? paragraph.slice(quotePrefix.length) : paragraph;
+    const contentWidthLimit = Math.max(1, maxWidth - textWidth(quotePrefix));
     let current = "";
     let currentWidth = 0;
-    for (const char of paragraph) {
-      const nextWidth = charWidth(char);
-      if (currentWidth + nextWidth > maxWidth) {
-        lines.push(current);
-        current = char;
-        currentWidth = nextWidth;
-      } else {
-        current += char;
-        currentWidth += nextWidth;
+    let activeLinkIndex: number | undefined;
+    let currentLineLinkIndex: number | undefined;
+    for (const token of splitRenderableTokens(content)) {
+      const linkStart = parseInternalLinkStart(token);
+      if (linkStart !== undefined) {
+        activeLinkIndex = linkStart;
+        currentLineLinkIndex ??= linkStart;
+        continue;
       }
+      if (token === internalLinkEndMarker) {
+        activeLinkIndex = undefined;
+        continue;
+      }
+      const tokenWidth = textWidth(token);
+      if (tokenWidth > contentWidthLimit) {
+        for (const char of token) {
+          const nextWidth = charWidth(char);
+          if (currentWidth + nextWidth > contentWidthLimit) {
+            lines.push(formatWrappedLine(quotePrefix, current, currentLineLinkIndex));
+            current = char;
+            currentWidth = nextWidth;
+            currentLineLinkIndex = activeLinkIndex;
+          } else {
+            current += char;
+            currentWidth += nextWidth;
+            currentLineLinkIndex ??= activeLinkIndex;
+          }
+        }
+        continue;
+      }
+      if (currentWidth > 0 && currentWidth + tokenWidth > contentWidthLimit) {
+        lines.push(formatWrappedLine(quotePrefix, current, currentLineLinkIndex));
+        current = token;
+        currentWidth = tokenWidth;
+        currentLineLinkIndex = activeLinkIndex;
+        continue;
+      }
+      current += token;
+      currentWidth += tokenWidth;
+      currentLineLinkIndex ??= activeLinkIndex;
     }
-    lines.push(current);
+    lines.push(formatWrappedLine(quotePrefix, current, currentLineLinkIndex));
   }
 
   return lines;
+}
+
+function splitRenderableTokens(value: string): string[] {
+  const parts = value.match(new RegExp(
+    `${escapeRegExp(internalLinkStartPrefix)}\\d+@@|${escapeRegExp(internalLinkEndMarker)}|https?:\\/\\/[^\\s<>\"）】)\\]]+|.`,
+    "gu"
+  ));
+  return parts ?? [];
+}
+
+function parseInternalLinkStart(value: string): number | undefined {
+  const match = new RegExp(`^${escapeRegExp(internalLinkStartPrefix)}(\\d+)@@$`).exec(value);
+  return match ? Number(match[1]) : undefined;
+}
+
+function formatWrappedLine(quotePrefix: string, value: string, linkIndex: number | undefined): string {
+  const marker = linkIndex !== undefined ? `[link ${linkIndex}]` : "";
+  return `${quotePrefix}${marker}${value}`;
+}
+
+function textWidth(value: string): number {
+  let width = 0;
+  for (const char of value) {
+    width += charWidth(char);
+  }
+  return width;
 }
 
 function compactQuotedMediaLines(value: string): string[] {
@@ -421,16 +476,6 @@ function compactMarkdownQuoteMediaBlocks(value: string): string {
   }
 
   return output.join("\n");
-}
-
-function shortUrl(value: string): string {
-  try {
-    const url = new URL(value);
-    const fileName = url.pathname.split("/").filter(Boolean).at(-1) ?? "";
-    return `${url.host}/${fileName}`;
-  } catch {
-    return value.split(/[\\/]/).at(-1) ?? value;
-  }
 }
 
 function isPreviewableImageUrl(value: string): boolean {

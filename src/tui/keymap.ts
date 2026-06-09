@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { getPlatformConfigDir } from "../platform/config-dir.js";
 
 export type TuiAction =
   | "compose.open"
@@ -43,8 +43,7 @@ export function loadTuiKeymap(): TuiKeymap {
 }
 
 export function getKeymapFilePath(): string {
-  const xdgConfigHome = process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config");
-  return join(xdgConfigHome, "cc98-cli", "keymap.toml");
+  return join(getPlatformConfigDir(), "keymap.toml");
 }
 
 function createTuiKeymap(bindings: KeyBinding[]): TuiKeymap {

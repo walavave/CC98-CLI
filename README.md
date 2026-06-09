@@ -104,13 +104,20 @@ q                 退出
 
 ### 配置
 
-配置文件路径为 `~/.config/cc98-cli/config.toml`，未设置时使用默认值。
+配置文件路径按系统区分，未设置时使用默认值：
+
+- Linux: `~/.config/cc98-cli/config.toml`
+- macOS: `~/.config/cc98-cli/config.toml`
+- Windows: `%APPDATA%\\cc98-cli\\config.toml`
+
+如果设置了 `XDG_CONFIG_HOME`，会优先使用 `$XDG_CONFIG_HOME/cc98-cli/config.toml`。
 
 ```toml
 [tui]
 hide_top_chrome = false
 preview_images = true
 navigation_history_limit = 10
+clear_cache_on_exit = true
 post_signature = "[right][color=#808080]——来自终端应用[/color]「[b][url=https://github.com/walavave/CC98-CLI]CC98 CLI[/url][/b]」[/right]"
 ```
 
@@ -120,9 +127,17 @@ post_signature = "[right][color=#808080]——来自终端应用[/color]「[b][u
 
 `navigation_history_limit` 控制 TUI 内“帖子 -> 用户 -> 帖子”这类右键深入导航的最大历史层数；超过后会清空这条返回链，后续左键返回会直接回到左侧栏对应主界面。
 
+`clear_cache_on_exit` 控制 TUI 在按 `q` 退出后是否清理缓存，默认开启。
+
 #### 可配置快捷键
 
-当前可配置快捷键都在 `~/.config/cc98-cli/keymap.toml` 的 `prepend_keymap` 里。格式参考 `keymap.toml`，组合键使用尖括号表示，例如：
+当前可配置快捷键都在对应系统配置目录下的 `keymap.toml` 的 `prepend_keymap` 里：
+
+- Linux: `~/.config/cc98-cli/keymap.toml`
+- macOS: `~/.config/cc98-cli/keymap.toml`
+- Windows: `%APPDATA%\\cc98-cli\\keymap.toml`
+
+如果设置了 `XDG_CONFIG_HOME`，会优先使用 `$XDG_CONFIG_HOME/cc98-cli/keymap.toml`。格式参考 `keymap.toml`，组合键使用尖括号表示，例如：
 
 ```toml
 [tui]
@@ -195,7 +210,9 @@ cc98 update --help
 登录信息和缓存保存在：
 
 ```text
-~/.cc98-cli/
+Linux: ~/.cc98-cli/
+macOS: ~/.cc98-cli/
+Windows: %APPDATA%\cc98-cli\
 ```
 
 ## 开发
