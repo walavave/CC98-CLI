@@ -170,6 +170,7 @@ export interface TopicReaderState {
   imageCount: number;
   linkCount: number;
   floorInput: string;
+  vote?: TopicVoteState;
 }
 
 export interface ImageViewerState {
@@ -204,6 +205,7 @@ export interface TopicPostEntry {
   time: string;
   rawTime: string;
   rawContent: string;
+  contentType: number;
   likeCount: number;
   dislikeCount: number;
   likeState: 0 | 1 | 2;
@@ -222,7 +224,7 @@ export interface TopicLineEntry {
   line: number;
   row: number;
   floor?: number;
-  kind: "header" | "divider" | "text" | "quote" | "image" | "link" | "blank";
+  kind: "header" | "divider" | "text" | "quote" | "image" | "link" | "blank" | "vote-info" | "vote-option" | "vote-action";
   text: string;
   imageIndex?: number;
   imageUrl?: string;
@@ -237,6 +239,36 @@ export interface TopicLineEntry {
     end: number;
     url: string;
   }>;
+  voteOptionId?: number;
+  voteAction?: "submit" | "reset";
+}
+
+export interface TopicVoteItem {
+  id: number;
+  description: string;
+  count: number;
+}
+
+export interface TopicVoteRecord {
+  userId?: number;
+  userName?: string;
+  items: number[];
+  ip?: string;
+  time?: string;
+}
+
+export interface TopicVoteState {
+  topicId: number;
+  voteItems: TopicVoteItem[];
+  expiredTime: string;
+  isAvailable: boolean;
+  maxVoteCount: number;
+  canVote: boolean;
+  myRecord?: TopicVoteRecord;
+  needVote: boolean;
+  voteUserCount: number;
+  selectedItems: number[];
+  isSubmitting: boolean;
 }
 
 export const navItems: NavItem[] = [
@@ -288,6 +320,15 @@ export function getStatus(state: TuiState): string {
   if (state.mode === "topic" && state.topic) {
     const post = currentTopicPost(state.topic, state.scroll);
     const line = currentTopicLine(state.topic, state.scroll);
+    if (line?.kind === "vote-option" && state.topic.vote) {
+      const selectedCount = state.topic.vote.selectedItems.length;
+      return `投票选项 · 已选 ${selectedCount}/${state.topic.vote.maxVoteCount} · Enter 勾选`;
+    }
+    if (line?.kind === "vote-action" && state.topic.vote) {
+      return line.voteAction === "submit"
+        ? `提交投票 · 已选 ${state.topic.vote.selectedItems.length}/${state.topic.vote.maxVoteCount}`
+        : "重置已选投票项";
+    }
     return post
       ? `${post.floor ?? "?"} 楼 · 第 ${line ? line.row + 1 : 1} 行`
       : `${state.topic.loaded} 楼已加载`;

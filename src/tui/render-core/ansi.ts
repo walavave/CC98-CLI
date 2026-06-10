@@ -7,6 +7,8 @@ export const ansi = {
   showCursor: "\x1b[?25h",
   enableMouse: "\x1b[?1000h\x1b[?1002h\x1b[?1006h",
   disableMouse: "\x1b[?1006l\x1b[?1002l\x1b[?1000l",
+  enableBracketedPaste: "\x1b[?2004h",
+  disableBracketedPaste: "\x1b[?2004l",
   reset: "\x1b[0m",
   inverse: "\x1b[7m",
   dim: "\x1b[2m",

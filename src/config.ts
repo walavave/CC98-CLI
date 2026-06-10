@@ -17,6 +17,7 @@ export interface TuiConfig {
   navigationHistoryLimit: number;
   clearCacheOnExit: boolean;
   postSignature: string;
+  topicScrollAtViewportEdge: boolean;
 }
 
 const defaultConfig: AppConfig = {
@@ -28,7 +29,8 @@ const defaultConfig: AppConfig = {
     previewImages: true,
     navigationHistoryLimit: 10,
     clearCacheOnExit: true,
-    postSignature: "[right][color=#808080]——来自终端应用[/color]「[b][url=https://github.com/walavave/CC98-CLI]CC98 CLI[/url][/b]」[/right]"
+    postSignature: "[right][color=#808080]——来自终端应用[/color]「[b][url=https://github.com/walavave/CC98-CLI]CC98 CLI[/url][/b]」[/right]",
+    topicScrollAtViewportEdge: false
   }
 };
 
@@ -61,7 +63,8 @@ function mergeConfig(base: AppConfig, parsed: Record<string, Record<string, unkn
       previewImages: booleanValue(tui.preview_images, base.tui.previewImages),
       navigationHistoryLimit: positiveIntegerValue(tui.navigation_history_limit, base.tui.navigationHistoryLimit),
       clearCacheOnExit: booleanValue(tui.clear_cache_on_exit, base.tui.clearCacheOnExit),
-      postSignature: stringValue(tui.post_signature, base.tui.postSignature)
+      postSignature: stringValue(tui.post_signature, base.tui.postSignature),
+      topicScrollAtViewportEdge: booleanValue(tui.topic_scroll_at_viewport_edge, base.tui.topicScrollAtViewportEdge)
     }
   };
 }

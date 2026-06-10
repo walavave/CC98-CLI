@@ -1,10 +1,9 @@
-import { ansi } from "./render-core/ansi.js";
 import type { TuiConfig } from "../config.js";
 import { Canvas } from "./render-core/canvas.js";
 import { center, fill, length, pad, rect, split } from "./render-core/layout.js";
 import type { TerminalFrame, TerminalImageOverlay } from "./render-core/terminal.js";
 import { cellWidth, fit } from "./render-core/text.js";
-import { ruleLine, selectedLine, styled, textStyle, theme } from "./render-core/theme.js";
+import { ruleLine, selectedLine, selectedNoticeLine, textStyle, theme } from "./render-core/theme.js";
 import {
   navItems,
   type TuiState
@@ -67,7 +66,7 @@ export function draw(state: TuiState, size: { columns: number; rows: number }, c
   if (sidebarArea.width > 0) {
     canvas.drawLines(sidebarArea, drawSidebar(state, sidebarArea.width, sidebarArea.height));
   }
-  const main = drawMain(state, mainArea.width, mainArea.height);
+  const main = drawMain(state, mainArea.width, mainArea.height, config);
   canvas.drawLines(mainArea, main.rows);
   imageOverlays = main.imageOverlays.map((overlay) => ({
     row: mainArea.y + overlay.row + 1,
@@ -123,11 +122,11 @@ function drawSidebar(state: TuiState, width: number, height: number): string[] {
     const text = fit(`${label}${hint}`, width);
     if (active && focused) {
       rows.push(hasUnread
-        ? styled(fit(text, width), `${theme.color.selectedBg}${theme.color.notice}${ansi.bold}`)
+        ? selectedNoticeLine(text, width)
         : selectedLine(text, width, true));
     } else if (active) {
       rows.push(hasUnread
-        ? styled(fit(text, width), `${theme.color.selectedBg}${theme.color.notice}${ansi.bold}`)
+        ? selectedNoticeLine(text, width)
         : selectedLine(text, width, true));
     } else {
       const labelStyle = hasUnread ? textStyle.noticeBold : textStyle.primary;

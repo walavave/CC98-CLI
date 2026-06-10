@@ -1,4 +1,5 @@
 import type { ContentItem } from "../tui-model.js";
+import { renderUserGenderPrefix } from "./user-gender.js";
 import {
   asNumber,
   asObject,
@@ -75,7 +76,7 @@ export function basicUserItem(value: unknown): ContentItem {
   const user = asObject(value);
   const userId = asNumber(user.id ?? user.Id);
   return {
-    title: String(user.name ?? user.userName ?? (userId !== undefined ? `#${userId}` : "用户")),
+    title: `${renderUserGenderPrefix(user)}${String(user.name ?? user.userName ?? (userId !== undefined ? `#${userId}` : "用户"))}`,
     meta: userId !== undefined ? `user #${userId}` : undefined,
     detail: typeof user.introduction === "string" ? normalizePreview(user.introduction) : undefined,
     userId

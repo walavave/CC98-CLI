@@ -1,7 +1,16 @@
-import { ansi } from "../render-core/ansi.js";
+import type { TuiConfig } from "../../config.js";
 import { imagePreviewRows } from "../media/image-preview.js";
 import { blank, cellWidth, fit, truncate, wrapText } from "../render-core/text.js";
-import { ruleLine, selectedLine, styled, textStyle, theme } from "../render-core/theme.js";
+import {
+  genderStyled,
+  noticeLineStyle,
+  ruleLine,
+  selectedLine,
+  selectedLineStyle,
+  styled,
+  textStyle,
+  theme
+} from "../render-core/theme.js";
 import {
   currentTopicLine,
   getStatus,
@@ -87,9 +96,9 @@ export function getRenderedSearchItemIndexAtRow(
   return undefined;
 }
 
-export function drawMain(state: TuiState, width: number, height: number): TopicDrawResult {
+export function drawMain(state: TuiState, width: number, height: number, config: TuiConfig): TopicDrawResult {
   if (state.mode === "topic") {
-    return drawTopic(state, width, height);
+    return drawTopic(state, width, height, config);
   }
 
   if (state.currentFollowing) {
@@ -283,7 +292,7 @@ function drawFollowing(state: TuiState, width: number, height: number): TopicDra
   return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
 }
 
-function drawTopic(state: TuiState, width: number, height: number): TopicDrawResult {
+function drawTopic(state: TuiState, width: number, height: number, config: TuiConfig): TopicDrawResult {
   if (state.loading && (!state.topic || state.topic.lines.length === 0)) {
     return { rows: [
       textStyle.primary(" 正在打开帖子..."),
@@ -314,12 +323,13 @@ function drawTopic(state: TuiState, width: number, height: number): TopicDrawRes
 
   const viewport = Math.max(0, height - rows.length - 1);
   const maxScroll = Math.max(0, topic.lines.length - viewport);
-  const visibleScroll = Math.min(state.scroll, maxScroll);
+  const visibleScroll = getTopicVisibleScroll(state.scroll, viewport, maxScroll, config);
   const body = topic.lines.slice(visibleScroll, visibleScroll + viewport);
 
   for (let index = 0; index < body.length; index += 1) {
     const bodyLine = body[index] ?? "";
     const lineEntry = currentTopicLine(topic, visibleScroll + index);
+    const isCurrentLine = visibleScroll + index === state.scroll;
     const imagePreview = lineEntry?.imagePreview;
     const previewHeight = Math.max(1, lineEntry?.imagePreviewRows ?? imagePreviewRows);
     const placeholderHeight = Math.max(1, lineEntry?.imageBlockRows ?? imagePlaceholderHeight(body, index));
@@ -331,6 +341,16 @@ function drawTopic(state: TuiState, width: number, height: number): TopicDrawRes
       imageOverlays.push({ row: rows.length, token: imagePreview });
       rows.push(...Array.from({ length: placeholderHeight }, () => topicBodyLine("", width)));
       index += placeholderHeight - 1;
+    } else if (lineEntry?.kind === "vote-option") {
+      rows.push(isCurrentLine
+        ? selectedLine(bodyLine, width, true)
+        : topicBodyLine(bodyLine, width, topic.vote?.selectedItems.includes(lineEntry.voteOptionId ?? -1) ? textStyle.primarySoftBold : undefined));
+    } else if (lineEntry?.kind === "vote-action") {
+      rows.push(isCurrentLine
+        ? selectedLine(bodyLine, width, true)
+        : topicBodyLine(bodyLine, width, textStyle.primary));
+    } else if (lineEntry?.kind === "vote-info") {
+      rows.push(topicBodyLine(bodyLine, width, textStyle.muted));
     } else if (bodyLine.startsWith("[image ")) {
       rows.push(topicBodyLine(bodyLine, width, textStyle.primarySoft));
     } else if (bodyLine.startsWith(theme.quote.prefix)) {
@@ -381,28 +401,13 @@ function renderListTitleRow(
 ): string {
   const content = fit(title, width);
   if (active) {
-    const style = focused
-      ? isUnread
-        ? `${theme.color.selectedBg}${theme.color.notice}${ansi.bold}`
-        : `${theme.color.selectedBg}${theme.color.selectedFg}${ansi.bold}`
-      : theme.color.primarySoft;
-    return renderGenderStyledLine(content, style);
+    const style = isUnread ? noticeLineStyle() : selectedLineStyle(focused);
+    return genderStyled(content, style);
   }
   if (isUnread) {
-    return renderGenderStyledLine(content, `${theme.color.notice}${ansi.bold}`);
+    return genderStyled(content, noticeLineStyle());
   }
-  return renderGenderStyledLine(content, theme.color.muted);
-}
-
-function renderGenderStyledLine(content: string, lineStyle: string): string {
-  const rendered = styled(content, lineStyle);
-  if (content.includes("♀ ")) {
-    return rendered.replace("♀", `${theme.color.female}${ansi.bold}♀${lineStyle}`);
-  }
-  if (content.includes("♂ ")) {
-    return rendered.replace("♂", `${theme.color.male}${ansi.bold}♂${lineStyle}`);
-  }
-  return rendered;
+  return genderStyled(content, theme.color.muted);
 }
 
 function getListItemHeight(
@@ -502,8 +507,8 @@ function drawFollowingHeader(title: string, following: NonNullable<TuiState["cur
 function drawSearchTab(label: string, active: boolean): string {
   const content = `[${label}]`;
   return active
-    ? styled(content, `${theme.color.selectedBg}${theme.color.selectedFg}${ansi.bold}`)
-    : styled(content, theme.color.textOnPrimary);
+    ? styled(content, selectedLineStyle(true))
+    : textStyle.onPrimary(content);
 }
 
 function searchKinds(search: NonNullable<TuiState["currentSearch"]>): NonNullable<TuiState["currentSearch"]>["kind"][] {
@@ -567,6 +572,14 @@ function topicBodyLine(content: string, width: number, style?: (value: string) =
   return fit(` ${style ? style(padded) : padded} `, width);
 }
 
+function getTopicVisibleScroll(scroll: number, viewport: number, maxScroll: number, config: TuiConfig): number {
+  const current = Math.min(Math.max(0, scroll), Math.max(0, maxScroll + viewport - 1));
+  if (!config.topicScrollAtViewportEdge || viewport <= 0) {
+    return Math.min(current, maxScroll);
+  }
+  return Math.max(0, Math.min(maxScroll, current - viewport + 1));
+}
+
 function imagePlaceholderHeight(body: string[], start: number): number {
   let height = 1;
   for (let index = start + 1; index < body.length; index += 1) {
@@ -603,6 +616,9 @@ function getKeyHints(state: TuiState): string {
   }
   if (state.mode === "topic") {
     hints.push("c 评论", "C 引用评", "a 赞", "s 踩", "d 收藏", "u 用户页", "z 进版", "x 复制链接");
+    if (state.topic?.vote) {
+      hints.push("Enter 投票操作");
+    }
   }
   hints.push("f 搜索", "r 刷新", "? 帮助", "q 退出");
   return hints.join(" ");

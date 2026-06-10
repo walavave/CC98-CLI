@@ -1,7 +1,7 @@
 import { openBoard, openChat, openUserProfile } from "../../data/content.js";
 import { executeSearch, loadNextSearchPage, switchSearchKind } from "../../data/search.js";
 import { openTopic } from "../../data/topic.js";
-import { isPrintableInput } from "../../account-modal.js";
+import { isPrintableInput, isPrintableTextInput } from "../../account-modal.js";
 import type { RuntimeContext } from "../context.js";
 import type { SearchKind } from "../../tui-model.js";
 import { leaveContentMode } from "../state.js";
@@ -45,7 +45,7 @@ export function handleSearchContentFocus(context: RuntimeContext, key: string): 
       void executeSearch(client, state, render, true, nextSignal());
       return;
     }
-    if (isPrintableInput(key)) {
+    if (isPrintableInput(key) || isPrintableTextInput(key)) {
       search.draft = `${search.draft}${key}`;
       render();
     }
@@ -66,7 +66,7 @@ export function handleSearchContentFocus(context: RuntimeContext, key: string): 
       render();
       return;
     }
-    if (isPrintableInput(key)) {
+    if (isPrintableInput(key) || isPrintableTextInput(key)) {
       search.focus = "input";
       search.draft = `${search.draft}${key}`;
       render();
@@ -118,7 +118,7 @@ export function handleSearchContentFocus(context: RuntimeContext, key: string): 
     void load(true);
     return;
   }
-  if (isPrintableInput(key)) {
+  if (isPrintableInput(key) || isPrintableTextInput(key)) {
     search.focus = "input";
     search.draft = `${search.draft}${key}`;
     render();

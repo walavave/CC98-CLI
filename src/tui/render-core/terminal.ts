@@ -18,6 +18,8 @@ export interface TerminalFrame {
   imageOverlays?: TerminalImageOverlay[];
 }
 
+export const bracketedPasteMarker = "\u0000cc98:bracketed-paste\u0000";
+
 export type KeyHandler = (key: string) => void;
 export interface MouseEvent {
   kind: "down" | "drag" | "up";
@@ -47,7 +49,7 @@ export class Terminal {
     }
     stdin.resume();
     stdin.setEncoding("utf8");
-    stdout.write(`${ansi.enterAltScreen}${ansi.clear}${ansi.home}${ansi.hideCursor}${ansi.enableMouse}`);
+    stdout.write(`${ansi.enterAltScreen}${ansi.clear}${ansi.home}${ansi.hideCursor}${ansi.enableMouse}${ansi.enableBracketedPaste}`);
     stdin.on("data", this.handleData);
     stdout.on("resize", this.handleResize);
   }
@@ -59,7 +61,7 @@ export class Terminal {
       clearTimeout(this.pendingEscapeTimeout);
       this.pendingEscapeTimeout = undefined;
     }
-    stdout.write(`${ansi.disableMouse}${ansi.reset}${ansi.clear}${ansi.home}${ansi.showCursor}${ansi.exitAltScreen}`);
+    stdout.write(`${ansi.disableBracketedPaste}${ansi.disableMouse}${ansi.reset}${ansi.clear}${ansi.home}${ansi.showCursor}${ansi.exitAltScreen}`);
     if (stdin.isTTY) {
       stdin.setRawMode(this.previousRawMode);
     }
@@ -127,6 +129,19 @@ export class Terminal {
     this.inputBuffer += chunk.toString("utf8");
 
     while (this.inputBuffer.length > 0) {
+      const pasteSequence = consumeBracketedPasteSequence(this.inputBuffer);
+      if (pasteSequence?.complete) {
+        this.inputBuffer = this.inputBuffer.slice(pasteSequence.sequence.length);
+        for (const handler of this.keyHandlers) {
+          handler(`${bracketedPasteMarker}${pasteSequence.content}`);
+        }
+        continue;
+      }
+      if (pasteSequence) {
+        this.scheduleBufferedInputFlush();
+        return;
+      }
+
       const mouseSequence = consumeMouseSequence(this.inputBuffer);
       if (mouseSequence?.complete) {
         this.inputBuffer = this.inputBuffer.slice(mouseSequence.sequence.length);
@@ -214,6 +229,25 @@ function parseMouseEvent(input: string): MouseEvent | undefined {
     : buttonCode === 0 ? "left" : buttonCode === 1 ? "middle" : "right";
   const kind: MouseEvent["kind"] = suffix === "m" ? "up" : dragging ? "drag" : "down";
   return { kind, button, row, column };
+}
+
+function consumeBracketedPasteSequence(
+  input: string
+): { complete: true; sequence: string; content: string } | { complete: false } | undefined {
+  const start = "\x1b[200~";
+  const end = "\x1b[201~";
+  if (!input.startsWith(start)) {
+    return undefined;
+  }
+  const endIndex = input.indexOf(end, start.length);
+  if (endIndex < 0) {
+    return { complete: false };
+  }
+  return {
+    complete: true,
+    sequence: input.slice(0, endIndex + end.length),
+    content: input.slice(start.length, endIndex)
+  };
 }
 
 function consumeMouseSequence(input: string): { complete: true; sequence: string; event: MouseEvent } | { complete: false } | undefined {

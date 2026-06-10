@@ -3,7 +3,8 @@ import type { TuiState } from "../tui-model.js";
 import { openChat } from "../data/content.js";
 import { jumpToTopicFloor, openTopic } from "../data/topic.js";
 import { ensureEmotionPreviews, getEmotionCategory } from "../media/emotion-catalog.js";
-import { isPrintableInput } from "../account-modal.js";
+import { bracketedPasteMarker } from "../render-core/terminal.js";
+import { isPrintableInput, isPrintableTextInput } from "../account-modal.js";
 import { focusSearchInput, handleContentFocus, handleNavFocus, handleSettingsMode } from "./content.js";
 import { handleImageModal } from "./image-viewer.js";
 import {
@@ -14,6 +15,7 @@ import {
   handleConfirmModal,
   handleLoginModal,
   insertComposeText,
+  pasteClipboardIntoCompose,
   moveComposeCursor,
   moveEmotionGrid,
   moveEmotionSidebar
@@ -126,6 +128,15 @@ function handleComposeModal(context: RuntimeContext, key: string, keyAction: str
   if (!compose || compose.submitting) {
     return;
   }
+  if (isBracketedPasteInput(key)) {
+    void pasteClipboardIntoCompose(context, key.slice(bracketedPasteMarker.length));
+    return;
+  }
+  if (isComposeTextChunkInput(key)) {
+    const normalized = normalizeComposeTextChunk(key);
+    handleComposeTextChunkInput(context, normalized, render);
+    return;
+  }
   if (key === "\x1b") {
     closeComposeModal(context);
     return;
@@ -133,6 +144,10 @@ function handleComposeModal(context: RuntimeContext, key: string, keyAction: str
   if (key === "\x7f") {
     handleComposeBackspace(context);
     render();
+    return;
+  }
+  if (key === "\x16") {
+    void pasteClipboardIntoCompose(context);
     return;
   }
   if (key === "\x1b[D") {
@@ -147,7 +162,7 @@ function handleComposeModal(context: RuntimeContext, key: string, keyAction: str
   }
   if (keyAction === "compose.open-emotion") {
     state.modal = "emotion-picker";
-    state.status = "表情：方向键选择  Enter 插入  其它键关闭";
+    state.status = "表情：方向键选择  Enter 插入  Ctrl+V 粘贴剪贴板  其它键关闭";
     render();
     void warmEmotionPicker(context);
     return;
@@ -266,7 +281,30 @@ function handleEmotionPickerModal(context: RuntimeContext, key: string): void {
 }
 
 function isPrintableComposeInput(key: string): boolean {
-  return key === " " || isPrintableInput(key);
+  return key === " " || isPrintableInput(key) || isPrintableTextInput(key);
+}
+
+function isComposeTextChunkInput(key: string): boolean {
+  return key.length > 1 &&
+    !key.startsWith("\x1b") &&
+    /^[\t\r\n -~\u0080-\u{10ffff}]+$/u.test(key);
+}
+
+function isBracketedPasteInput(key: string): boolean {
+  return key.startsWith(bracketedPasteMarker);
+}
+
+function normalizeComposeTextChunk(key: string): string {
+  return key.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function handleComposeTextChunkInput(
+  context: RuntimeContext,
+  value: string,
+  render: () => void
+): void {
+  insertComposeText(context, value);
+  render();
 }
 
 function isShiftEnter(key: string): boolean {

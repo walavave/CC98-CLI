@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
 import type { TuiConfig } from "../../config.js";
 import { openBoard, openUserProfile } from "../data/content.js";
-import { jumpRelativeTopicFloor, jumpToTopicFloor, loadNextTopicPage, openTopic } from "../data/topic.js";
-import { currentTopicPost, getStatus, type TuiState } from "../tui-model.js";
+import { jumpRelativeTopicFloor, jumpToTopicFloor, loadNextTopicPage, openTopic, updateTopicVote } from "../data/topic.js";
+import { currentTopicPost, getStatus, type TopicVoteState, type TuiState } from "../tui-model.js";
 import type { RuntimeContext } from "./context.js";
 import { openTopicImageViewer, stepTopicImageViewer } from "./image-viewer.js";
 import { openComposeModal } from "./modals.js";
@@ -52,6 +52,10 @@ export function handleTopicMode(context: RuntimeContext, key: string, keyAction:
       state.status = getStatus(state);
       render();
     }
+    return;
+  }
+  if (key === "\r" && state.topic && !state.topic.floorInput) {
+    void handleTopicEnter(context);
     return;
   }
   if ((key === "]" || key === "】" || keyAction === "topic.next-reply") && state.topic) {
@@ -146,6 +150,155 @@ export function handleTopicMode(context: RuntimeContext, key: string, keyAction:
   if (key === "r" && state.topic) {
     void openTopic(client, state, state.topic.topicId, render, config, true, nextSignal(), state.topic.board, false);
   }
+}
+
+async function handleTopicEnter(context: RuntimeContext): Promise<void> {
+  const { state } = context;
+  const topic = state.topic;
+  if (!topic?.vote) {
+    return;
+  }
+  const line = topic.posts.flatMap((post) => post.lines).find((entry) => entry.line === state.scroll);
+  if (!line) {
+    return;
+  }
+  if (line.kind === "vote-option" && line.voteOptionId !== undefined) {
+    toggleTopicVoteSelection(context, line.voteOptionId);
+    return;
+  }
+  if (line.kind === "vote-action") {
+    if (line.voteAction === "submit") {
+      await submitTopicVote(context);
+    } else if (line.voteAction === "reset") {
+      resetTopicVoteSelection(context);
+    }
+  }
+}
+
+function toggleTopicVoteSelection(context: RuntimeContext, optionId: number): void {
+  const { state, render } = context;
+  const topic = state.topic;
+  const vote = topic?.vote;
+  if (!topic || !vote) {
+    return;
+  }
+  if (!vote.canVote) {
+    state.status = "当前投票不可参与";
+    render();
+    return;
+  }
+
+  const exists = vote.selectedItems.includes(optionId);
+  if (exists) {
+    vote.selectedItems = vote.selectedItems.filter((item) => item !== optionId);
+  } else {
+    if (vote.selectedItems.length >= vote.maxVoteCount) {
+      state.status = `最多只能选择 ${vote.maxVoteCount} 项`;
+      render();
+      return;
+    }
+    vote.selectedItems = [...vote.selectedItems, optionId];
+  }
+
+  updateTopicVote(topic, vote, context.config, state.sidebarWidth);
+  state.status = getStatus(state);
+  render();
+}
+
+function resetTopicVoteSelection(context: RuntimeContext): void {
+  const { state, render } = context;
+  const topic = state.topic;
+  const vote = topic?.vote;
+  if (!topic || !vote) {
+    return;
+  }
+  vote.selectedItems = vote.myRecord?.items ?? [];
+  updateTopicVote(topic, vote, context.config, state.sidebarWidth);
+  state.status = "已重置投票选择";
+  render();
+}
+
+async function submitTopicVote(context: RuntimeContext): Promise<void> {
+  const { state, client, render } = context;
+  const topic = state.topic;
+  const vote = topic?.vote;
+  if (!topic || !vote) {
+    return;
+  }
+  if (!vote.canVote) {
+    state.status = "当前投票不可参与";
+    render();
+    return;
+  }
+  if (vote.selectedItems.length === 0) {
+    state.status = "请先选择至少一个投票项";
+    render();
+    return;
+  }
+
+  vote.isSubmitting = true;
+  state.status = "正在提交投票...";
+  render();
+
+  try {
+    await client.submitTopicVote(topic.topicId, vote.selectedItems);
+    const latest = await client.getTopicVote(topic.topicId, true);
+    const nextVote = parseTopicVoteForRuntime(latest);
+    if (!nextVote) {
+      throw new Error("投票成功，但刷新结果失败");
+    }
+    updateTopicVote(topic, nextVote, context.config, state.sidebarWidth);
+    showNotification(state, "投票成功");
+    state.status = getStatus(state);
+  } catch (error) {
+    state.error = error instanceof Error ? error.message : String(error);
+    state.status = "投票失败";
+  } finally {
+    if (topic.vote) {
+      topic.vote.isSubmitting = false;
+    }
+    render();
+  }
+}
+
+function parseTopicVoteForRuntime(raw: unknown): TopicVoteState | undefined {
+  const vote = typeof raw === "object" && raw !== null ? raw as Record<string, unknown> : {};
+  const items = Array.isArray(vote.voteItems) ? vote.voteItems : [];
+  if (typeof vote.topicId !== "number" || items.length === 0) {
+    return undefined;
+  }
+  const myRecord = typeof vote.myRecord === "object" && vote.myRecord !== null
+    ? vote.myRecord as Record<string, unknown>
+    : undefined;
+  const myItems = Array.isArray(myRecord?.items)
+    ? myRecord.items.filter((item): item is number => typeof item === "number")
+    : [];
+  return {
+    topicId: vote.topicId,
+    voteItems: items
+      .map((item) => typeof item === "object" && item !== null ? item as Record<string, unknown> : {})
+      .map((item) => ({
+        id: typeof item.id === "number" ? item.id : 0,
+        description: typeof item.description === "string" ? item.description : "",
+        count: typeof item.count === "number" ? item.count : 0
+      }))
+      .filter((item) => item.id > 0 && item.description),
+    expiredTime: typeof vote.expiredTime === "string" ? vote.expiredTime : "",
+    isAvailable: vote.isAvailable === true,
+    maxVoteCount: typeof vote.maxVoteCount === "number" && vote.maxVoteCount > 0 ? vote.maxVoteCount : 1,
+    canVote: vote.canVote === true,
+    myRecord: myRecord ? {
+      userId: typeof myRecord.userId === "number" ? myRecord.userId : undefined,
+      userName: typeof myRecord.userName === "string" ? myRecord.userName : undefined,
+      items: myItems,
+      ip: typeof myRecord.ip === "string" ? myRecord.ip : undefined,
+      time: typeof myRecord.time === "string" ? myRecord.time : undefined
+    } : undefined,
+    needVote: vote.needVote === true,
+    voteUserCount: typeof vote.voteUserCount === "number" && vote.voteUserCount >= 0 ? vote.voteUserCount : 0,
+    selectedItems: myItems,
+    isSubmitting: false
+  };
 }
 
 function openComposeQuoteModal(context: RuntimeContext): void {

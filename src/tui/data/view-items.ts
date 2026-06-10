@@ -1,4 +1,5 @@
 import { basicUserItem, historyTopicItem, recentPostItem, topicItem } from "./items.js";
+import { renderUserGenderPrefix } from "./user-gender.js";
 import { asArray, asNumber, asObject, formatTime, normalizeInlineText, normalizePreview, timestampOf } from "./utils.js";
 import type { ContentItem, NoticeType, TuiState } from "../tui-model.js";
 import { CachedCc98Client } from "../cached-client.js";
@@ -151,24 +152,6 @@ export function buildUserProfileItems(profile: Record<string, unknown>): Content
     item("注册时间", formatTime(profile.registerTime)),
     item("最后登录", formatTime(profile.lastLogOnTime))
   ];
-}
-
-function renderUserGenderPrefix(profile: Record<string, unknown>): string {
-  const raw = profile.forum ?? profile.Forum ?? profile.gender ?? profile.Gender ?? profile.sex ?? profile.Sex;
-  if (raw === undefined || raw === null) {
-    return "";
-  }
-  const normalized = String(raw).trim().toLowerCase();
-  if (!normalized) {
-    return "";
-  }
-  if (normalized === "女" || normalized === "female" || normalized === "f" || normalized === "2") {
-    return "♀ ";
-  }
-  if (normalized === "男" || normalized === "male" || normalized === "m" || normalized === "1") {
-    return "♂ ";
-  }
-  return "";
 }
 
 export function describeUserProfileStatus(state: TuiState): string {
@@ -377,7 +360,7 @@ export async function loadFeedPageItems(
     case "me-fans": {
       const ids = asArray(await client.getFriendIds("follower", feed.loaded, feed.size, force, signal))
         .filter((id): id is number => typeof id === "number");
-      const users = asArray(await client.getBasicUsers(ids, force, signal));
+      const users = asArray(await client.getUsers(ids));
       return { items: users.map((user) => basicUserItem(user)), received: ids.length };
     }
   }

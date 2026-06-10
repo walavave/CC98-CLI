@@ -8,7 +8,14 @@ import { emotionCategories, getEmotionPreview, getEmotionCategory } from "../med
 import { center, pad, rect } from "../render-core/layout.js";
 import type { TerminalFrame, TerminalImageOverlay } from "../render-core/terminal.js";
 import { blank, cellWidth, fit } from "../render-core/text.js";
-import { ruleLine, selectedLine, styled, textStyle, theme } from "../render-core/theme.js";
+import {
+  emotionCursor,
+  emotionSelectedStyle,
+  ruleLine,
+  selectedLine,
+  textStyle,
+  theme
+} from "../render-core/theme.js";
 import type { TuiState } from "../tui-model.js";
 
 export function drawModalFrame(baseLines: string[], state: TuiState, width: number, height: number): TerminalFrame | undefined {
@@ -64,6 +71,7 @@ function drawHelpModal(baseLines: string[], state: TuiState, width: number, heig
     "   c           默认打开评论框，可在 keymap 中改",
     "   Shift+c     引用当前楼层后发表评论",
     "   a/s/d       赞/踩/收藏",
+    "   Enter       在投票项上勾选，在按钮上提交/重置",
     "   z           进入帖子对应版面",
     "   x           复制帖子链接",
     "   u           打开当前楼层作者用户页",
@@ -84,10 +92,10 @@ function drawHelpModal(baseLines: string[], state: TuiState, width: number, heig
   const visibleContent = helpContent.slice(visibleScroll, visibleScroll + viewportHeight);
   const decorated = [...visibleContent];
   if (visibleScroll > 0 && decorated.length > 0) {
-    decorated[0] = textStyle.notice(" ↑ 更多");
+    decorated[0] = textStyle.muted(" ↑ 更多");
   }
   if (visibleScroll < maxScroll && decorated.length > 0) {
-    decorated[decorated.length - 1] = textStyle.notice(" ↓ 更多");
+    decorated[decorated.length - 1] = textStyle.muted(" ↓ 更多");
   }
   canvas.overlay(area, decorated, { fill: theme.color.panelBg });
   return canvas.toString();
@@ -154,7 +162,7 @@ function drawComposeModal(baseLines: string[], state: TuiState, width: number, h
   const draftView = buildComposeDraftView(compose.draftUnits, compose.cursorIndex, contentWidth, draftHeight);
   const rows = [
     fit(
-      `${textStyle.primaryBold(compose.target.kind === "chat" ? " 发送私信" : " 发表评论")}${textStyle.muted(` ${compose.submitting ? "正在发送..." : "Enter 发送  Shift+Enter 换行  表情快捷键打开表情  Esc 取消"}`)}`,
+      `${textStyle.primaryBold(compose.target.kind === "chat" ? " 发送私信" : " 发表评论")}${textStyle.muted(` ${compose.submitting ? "正在发送..." : "Enter 发送  Shift+Enter 换行  Ctrl+V 粘贴剪贴板  表情快捷键打开表情  Esc 取消"}`)}`,
       innerWidth
     ),
     ruleLine(Math.max(0, innerWidth))
@@ -272,8 +280,7 @@ function renderComposeCursor(units: string[], cursorColumn?: number): string {
     return units.join("");
   }
   const safeIndex = Math.max(0, Math.min(units.length, cursorColumn));
-  const cursorStyle = `${theme.color.emotionSelectedBorder}`;
-  const cursorGlyph = styled("|", cursorStyle);
+  const cursorGlyph = emotionCursor();
   if (safeIndex === units.length) {
     return `${units.join("")}${cursorGlyph}`;
   }
@@ -345,7 +352,7 @@ function drawEmotionPickerModal(baseLines: string[], state: TuiState, width: num
     }
 
     const selected = localIndex === compose.emotionSelectedIndex;
-    const borderStyle = selected ? theme.color.emotionSelectedBorder : theme.color.muted;
+    const borderStyle = selected ? emotionSelectedStyle() : theme.color.muted;
     const box = { x, y, width: cellWidthValue, height: cellHeight };
     canvas.frame(box);
 
@@ -367,7 +374,7 @@ function drawEmotionPickerModal(baseLines: string[], state: TuiState, width: num
     }
 
     if (selected) {
-      tintBox(canvas, box, theme.color.emotionSelectedBorder);
+      tintBox(canvas, box, emotionSelectedStyle());
     } else {
       tintBox(canvas, box, borderStyle);
     }

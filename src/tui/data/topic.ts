@@ -9,6 +9,8 @@ import {
   type TopicLineEntry,
   type TopicPostEntry,
   type TopicReaderState,
+  type TopicVoteRecord,
+  type TopicVoteState,
   type TuiState,
   type BoardListState
 } from "../tui-model.js";
@@ -67,9 +69,12 @@ export async function openTopic(
     ]);
     const topic = asObject(topicRaw);
     const posts = asArray(postsRaw);
+    const vote = asBoolean(topic.isVote ?? topic.IsVote)
+      ? parseTopicVote(await client.getTopicVote(topicId, force))
+      : undefined;
     const resolvedBoard = await resolveTopicBoardContext(client, topicBoardContext(topic) ?? state.currentBoard, force, signal);
     state.currentBoard = resolvedBoard;
-    const reader = buildTopicReader(topicId, topic, posts, 10, config, asBoolean(favoriteRaw) ?? false, resolvedBoard);
+    const reader = buildTopicReader(topicId, topic, posts, 10, config, asBoolean(favoriteRaw) ?? false, resolvedBoard, vote);
     reader.forceRefresh = force;
     state.topic = reader;
     state.viewTitle = reader.title;
@@ -319,7 +324,8 @@ function buildTopicReader(
   size: number,
   config: TuiConfig,
   isFavorite: boolean,
-  board?: BoardListState
+  board?: BoardListState,
+  vote?: TopicVoteState
 ): TopicReaderState {
   const title = normalizeInlineText(String(topic.title ?? `#${topicId}`));
   const meta = [
@@ -328,7 +334,7 @@ function buildTopicReader(
     topic.replyCount !== undefined ? `${topic.replyCount} 回复` : undefined,
     topic.hitCount !== undefined ? `${topic.hitCount} 浏览` : undefined
   ].filter(Boolean).join(" · ");
-  const rendered = renderPosts(posts, currentTopicWidthEstimate(), config);
+  const rendered = renderPosts(posts, currentTopicWidthEstimate(), config, 0, vote);
 
   return {
     topicId,
@@ -344,7 +350,8 @@ function buildTopicReader(
     hasMore: posts.length === size,
     imageCount: rendered.imageCount,
     linkCount: rendered.linkCount,
-    floorInput: ""
+    floorInput: "",
+    vote
   };
 }
 
@@ -370,7 +377,8 @@ function renderPosts(
   posts: unknown[],
   width: number,
   config: TuiConfig,
-  lineOffset = 0
+  lineOffset = 0,
+  vote?: TopicVoteState
 ): {
   lines: string[];
   posts: TopicPostEntry[];
@@ -418,6 +426,11 @@ function renderPosts(
 
     const content = typeof post.content === "string" ? post.content : "";
     const contentType = asNumber(post.contentType) ?? 0;
+    if (floorNumber === 1 && vote) {
+      renderVoteSection(vote, push);
+      push("", "blank");
+    }
+
     const rendered = contentType === 1
       ? renderMarkdownToLines(content, contentWidth, {
         imagePreviewRows: config.previewImages ? imagePreviewRows : 0
@@ -468,6 +481,7 @@ function renderPosts(
       time,
       rawTime,
       rawContent: content,
+      contentType,
       likeCount,
       dislikeCount,
       likeState,
@@ -486,6 +500,112 @@ function renderPosts(
   });
 
   return { lines, posts: entries, imageCount, linkCount };
+}
+
+function renderVoteSection(vote: TopicVoteState, push: (text: string, kind: TopicLineEntry["kind"], extra?: Partial<TopicLineEntry>) => void): void {
+  const needVoteBeforeResult = vote.needVote && !vote.myRecord && vote.isAvailable;
+  push("【投票】", "vote-info");
+  for (const item of vote.voteItems) {
+    const checked = vote.selectedItems.includes(item.id) ? "x" : " ";
+    const selectedLimitReached = !vote.selectedItems.includes(item.id) && vote.selectedItems.length >= vote.maxVoteCount;
+    const blocked = !vote.canVote || selectedLimitReached;
+    const percent = needVoteBeforeResult ? undefined : `${((item.count * 100) / Math.max(vote.voteUserCount, 1)).toFixed(2)}%`;
+    const suffix = needVoteBeforeResult ? "" : ` · ${item.count} 人${percent ? ` / ${percent}` : ""}`;
+    push(`[${checked}] ${item.description}${suffix}${blocked ? " · 不可选" : ""}`, "vote-option", { voteOptionId: item.id });
+  }
+
+  push(`截止：${formatVoteTime(vote.expiredTime)}`, "vote-info");
+  push(`最多可投 ${vote.maxVoteCount} 项，已有 ${vote.voteUserCount} 人参与`, "vote-info");
+  const hint = voteMessage(vote);
+  if (hint) {
+    push(hint, "vote-info");
+  }
+  if (vote.canVote) {
+    push("[提交投票]", "vote-action", { voteAction: "submit" });
+    push("[重置选择]", "vote-action", { voteAction: "reset" });
+  }
+}
+
+function voteMessage(vote: TopicVoteState): string | undefined {
+  if (vote.canVote && vote.needVote) {
+    return "该投票在过期前需要先投票才能查看结果。";
+  }
+  if (vote.myRecord && vote.myRecord.items.length > 0) {
+    return `你已投票：${vote.myRecord.items.join("，")}`;
+  }
+  if (!vote.canVote && !vote.isAvailable) {
+    return "该投票已结束。";
+  }
+  return undefined;
+}
+
+function formatVoteTime(value: string): string {
+  return value ? value.replace("T", " ").slice(0, 19) : "-";
+}
+
+function parseTopicVote(raw: unknown): TopicVoteState | undefined {
+  const vote = asObject(raw);
+  const topicId = asNumber(vote.topicId);
+  const voteItems = asArray(vote.voteItems)
+    .map((entry) => asObject(entry))
+    .map((item) => ({
+      id: asNumber(item.id) ?? 0,
+      description: normalizeInlineText(String(item.description ?? "")),
+      count: asNumber(item.count) ?? 0
+    }))
+    .filter((item) => item.id > 0 && item.description);
+  if (topicId === undefined || voteItems.length === 0) {
+    return undefined;
+  }
+
+  const myRecordRaw = asObject(vote.myRecord);
+  const myRecordItems = asArray(myRecordRaw.items).map((item) => asNumber(item)).filter((item): item is number => item !== undefined);
+  const myRecord: TopicVoteRecord | undefined = myRecordItems.length > 0 || Object.keys(myRecordRaw).length > 0
+    ? {
+      userId: asNumber(myRecordRaw.userId),
+      userName: typeof myRecordRaw.userName === "string" ? myRecordRaw.userName : undefined,
+      items: myRecordItems,
+      ip: typeof myRecordRaw.ip === "string" ? myRecordRaw.ip : undefined,
+      time: typeof myRecordRaw.time === "string" ? myRecordRaw.time : undefined
+    }
+    : undefined;
+
+  return {
+    topicId,
+    voteItems,
+    expiredTime: typeof vote.expiredTime === "string" ? vote.expiredTime : "",
+    isAvailable: asBoolean(vote.isAvailable) ?? false,
+    maxVoteCount: Math.max(1, asNumber(vote.maxVoteCount) ?? 1),
+    canVote: asBoolean(vote.canVote) ?? false,
+    myRecord,
+    needVote: asBoolean(vote.needVote) ?? false,
+    voteUserCount: Math.max(0, asNumber(vote.voteUserCount) ?? 0),
+    selectedItems: myRecord?.items ?? [],
+    isSubmitting: false
+  };
+}
+
+export function updateTopicVote(topic: TopicReaderState, vote: TopicVoteState, config: TuiConfig, sidebarWidthOverride?: number): void {
+  topic.vote = vote;
+  const width = Math.max(36, currentTopicWidthEstimate(sidebarWidthOverride));
+  const rawPosts = topic.posts.map((post) => ({
+    id: post.id,
+    userId: post.userId,
+    floor: post.floor,
+    userName: post.author,
+    time: post.rawTime.replace(" ", "T"),
+    content: post.rawContent,
+    contentType: post.contentType,
+    likeCount: post.likeCount,
+    dislikeCount: post.dislikeCount,
+    likeState: post.likeState,
+    rating: post.rating
+  }));
+  const rerendered = renderPosts(rawPosts, width, config, 0, vote);
+  topic.lines = rerendered.lines;
+  topic.posts = rerendered.posts;
+  topic.imageCount = rerendered.imageCount;
+  topic.linkCount = rerendered.linkCount;
 }
 
 function normalizeLikeState(value: unknown): 0 | 1 | 2 {

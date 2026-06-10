@@ -94,11 +94,46 @@ export const textStyle = {
   }
 } as const;
 
-export function selectedLine(content: string, width: number, focused = true): string {
+export function selectedLineStyle(focused = true): string {
   if (!focused) {
-    return textStyle.primarySoft(fit(content, width));
+    return theme.color.primarySoft;
   }
-  return styled(fit(content, width), `${theme.color.selectedBg}${theme.color.selectedFg}${ansi.bold}`);
+  return `${theme.color.selectedBg}${theme.color.selectedFg}${ansi.bold}`;
+}
+
+export function selectedNoticeLineStyle(): string {
+  return `${theme.color.selectedBg}${theme.color.notice}${ansi.bold}`;
+}
+
+export function noticeLineStyle(): string {
+  return `${theme.color.notice}${ansi.bold}`;
+}
+
+export function emotionSelectedStyle(): string {
+  return theme.color.emotionSelectedBorder;
+}
+
+export function genderStyled(content: string, lineStyle: string): string {
+  const rendered = styled(content, lineStyle);
+  if (content.includes("♀ ")) {
+    return rendered.replace("♀", `${theme.color.female}${ansi.bold}♀${lineStyle}`);
+  }
+  if (content.includes("♂ ")) {
+    return rendered.replace("♂", `${theme.color.male}${ansi.bold}♂${lineStyle}`);
+  }
+  return rendered;
+}
+
+export function selectedLine(content: string, width: number, focused = true): string {
+  return styled(fit(content, width), selectedLineStyle(focused));
+}
+
+export function selectedNoticeLine(content: string, width: number): string {
+  return styled(fit(content, width), selectedNoticeLineStyle());
+}
+
+export function emotionCursor(content = "|"): string {
+  return styled(content, emotionSelectedStyle());
 }
 
 export function panelLine(content: string, width: number): string {

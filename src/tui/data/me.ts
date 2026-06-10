@@ -184,7 +184,7 @@ export async function openMyFans(
 
   try {
     const ids = asArray(await client.getFriendIds("follower", 0, size, force, signal)).filter((id): id is number => typeof id === "number");
-    const users = asArray(await client.getBasicUsers(ids, force, signal));
+    const users = asArray(await client.getUsers(ids));
     const items = users.map((user) => basicUserItem(user));
     state.items = items;
     if (state.currentFeed) {

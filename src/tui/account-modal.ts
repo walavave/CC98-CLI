@@ -51,6 +51,10 @@ export function isPrintableInput(key: string): boolean {
   return key.length === 1 && key >= " " && key !== "\x7f";
 }
 
+export function isPrintableTextInput(value: string): boolean {
+  return value.length > 0 && Array.from(value).every((char) => char >= " " && char !== "\x7f");
+}
+
 export function drawAccountModal(
   baseLines: string[],
   state: AccountModalState,

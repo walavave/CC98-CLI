@@ -154,6 +154,14 @@ export class CachedCc98Client {
     return this.cache.getOrSet(`user:basic:${uniqueIds.join(",")}`, 10 * minute, () => this.client.getBasicUsers(uniqueIds, { signal }), { force });
   }
 
+  getUsers(ids: number[], force = false): Promise<unknown> {
+    const uniqueIds = [...new Set(ids)].sort((a, b) => a - b);
+    if (uniqueIds.length === 0) {
+      return Promise.resolve([]);
+    }
+    return this.cache.getOrSet(`user:full:${uniqueIds.join(",")}`, 60 * second, () => this.client.getUsers(uniqueIds), { force });
+  }
+
   getMe(force = false, signal?: AbortSignal): Promise<unknown> {
     return this.cache.getOrSet("user:me", 60 * second, () => this.client.getMe({ signal }), { force });
   }
@@ -208,6 +216,23 @@ export class CachedCc98Client {
       () => this.client.getTopicPosts(topicId, from, size, { signal }),
       { force }
     );
+  }
+
+  getTopicVote(topicId: number, force = false): Promise<unknown> {
+    return this.cache.getOrSet(
+      `topic:vote:${topicId}`,
+      10 * second,
+      () => this.client.getTopicVote(topicId),
+      { force }
+    );
+  }
+
+  async submitTopicVote(topicId: number, items: number[]): Promise<unknown> {
+    const result = await this.client.submitTopicVote(topicId, items);
+    this.cache.delete(`topic:vote:${topicId}`);
+    this.cache.delete(`topic:meta:${topicId}`);
+    this.cache.delete(`topic:posts:${topicId}:0:10`);
+    return result;
   }
 
   getPostReactionState(postId: number, force = false): Promise<unknown> {

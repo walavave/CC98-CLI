@@ -39,8 +39,13 @@ export async function handleTopicClick(
     return;
   }
   const maxScroll = Math.max(0, state.topic.lines.length - viewport);
-  const visibleScroll = Math.min(state.scroll, maxScroll);
+  const visibleScroll = state.topic && context.config.topicScrollAtViewportEdge
+    ? Math.max(0, Math.min(maxScroll, state.scroll - viewport + 1))
+    : Math.min(state.scroll, maxScroll);
   const absoluteLine = visibleScroll + bodyLineIndex;
+  state.scroll = Math.max(0, Math.min(state.topic.lines.length - 1, absoluteLine));
+  state.status = getStatus(state);
+  render();
   const clickedContentColumn = event.column - 1 - mainArea.x - 1;
   const lineEntry = state.topic.posts
     .flatMap((post) => post.lines)

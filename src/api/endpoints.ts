@@ -68,6 +68,9 @@ export const endpoints = {
     topicReply: (topicId: number) => `${base}/topic/${topicId}/post`,
     rateReasons: (type: number) => `${base}/post/rating-reason?type=${type}`
   },
+  file: {
+    upload: `${base}/file`
+  },
   write: {
     addFavorite: (topicId: number, groupId = 0) => `${base}/me/favorite/${topicId}?groupid=${groupId}`,
     removeFavorite: (topicId: number) => `${base}/me/favorite/${topicId}`,

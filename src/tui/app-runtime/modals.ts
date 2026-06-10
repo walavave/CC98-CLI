@@ -1,6 +1,9 @@
 import { checkForUpdate } from "../../update.js";
-import { createLoginForm, isPrintableInput, updateLoginField } from "../account-modal.js";
+import { access, readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { createLoginForm, isPrintableInput, isPrintableTextInput, updateLoginField } from "../account-modal.js";
 import { emotionCategories, getEmotionCategory } from "../media/emotion-catalog.js";
+import { readClipboardImageFile, readClipboardText } from "../media/clipboard.js";
 import { graphemes } from "../render-core/text.js";
 import { getDefaultAccountName, normalizeLoginMessage, refreshAccounts } from "../data/accounts.js";
 import { getStatus } from "../tui-model.js";
@@ -135,7 +138,7 @@ export function handleLoginModal(context: RuntimeContext, key: string): void {
     });
     return;
   }
-  if (isPrintableInput(key)) {
+  if (isPrintableInput(key) || isPrintableTextInput(key)) {
     updateLoginField(state.loginForm, (value) => `${value}${key}`);
     render();
   }
@@ -328,6 +331,179 @@ export function insertComposeText(context: RuntimeContext, value: string): void 
   state.composeDialog.draftUnits.splice(state.composeDialog.cursorIndex, 0, ...insertedUnits);
   state.composeDialog.draft = state.composeDialog.draftUnits.join("");
   state.composeDialog.cursorIndex += insertedUnits.length;
+}
+
+export async function pasteClipboardIntoCompose(context: RuntimeContext, fallbackText?: string): Promise<void> {
+  const { state, render, rawClient } = context;
+  const compose = state.composeDialog;
+  if (!compose || compose.submitting) {
+    return;
+  }
+
+  state.status = "正在读取剪贴板...";
+  render();
+
+  try {
+    const imageFile = await readClipboardImageFile();
+    if (imageFile) {
+      state.status = "正在上传剪贴板图片...";
+      render();
+      const uploaded = await rawClient.uploadFile(imageFile);
+      const imageUrl = uploaded[0];
+      if (!imageUrl) {
+        throw new Error("图片上传失败");
+      }
+      insertComposeText(context, `[img]${imageUrl}[/img]`);
+      state.status = "已插入剪贴板图片";
+      render();
+      return;
+    }
+
+    const text = await readClipboardText();
+    if (text) {
+      const uploaded = await tryInsertImagePathsAsUploads(context, text, rawClient, render);
+      if (uploaded) {
+        state.status = uploaded > 1 ? `已上传并插入 ${uploaded} 张图片` : "已上传并插入剪贴板图片";
+        render();
+        return;
+      }
+      insertComposeText(context, text);
+      state.status = "已粘贴剪贴板文本";
+      render();
+      return;
+    }
+
+    if (fallbackText) {
+      const normalized = fallbackText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      const uploaded = await tryInsertImagePathsAsUploads(context, normalized, rawClient, render);
+      if (uploaded) {
+        state.status = uploaded > 1 ? `已上传并插入 ${uploaded} 张图片` : "已上传并插入剪贴板图片";
+        render();
+        return;
+      }
+      insertComposeText(context, normalized);
+      state.status = "已粘贴剪贴板文本";
+      render();
+      return;
+    }
+
+    state.status = "剪贴板中没有可粘贴的图片或文本";
+    render();
+  } catch (error) {
+    state.status = `粘贴失败：${error instanceof Error ? error.message : String(error)}`;
+    render();
+  }
+}
+
+export async function tryInsertImagePathsAsUploads(
+  context: RuntimeContext,
+  value: string,
+  rawClient: RuntimeContext["rawClient"],
+  render: () => void
+): Promise<number | undefined> {
+  const files = await resolveImageFilesFromText(value);
+  if (files.length === 0) {
+    return undefined;
+  }
+
+  const inserted: string[] = [];
+  for (let index = 0; index < files.length; index += 1) {
+    const file = files[index];
+    context.state.status = files.length > 1
+      ? `正在上传图片 ${index + 1}/${files.length}...`
+      : "正在上传图片...";
+    render();
+    const uploaded = await rawClient.uploadFile(file);
+    const imageUrl = uploaded[0];
+    if (!imageUrl) {
+      throw new Error("图片上传失败");
+    }
+    inserted.push(`[img]${imageUrl}[/img]`);
+  }
+
+  insertComposeText(context, inserted.join("\n"));
+  return inserted.length;
+}
+
+async function resolveImageFilesFromText(value: string): Promise<File[]> {
+  const candidates = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  const files: File[] = [];
+  for (const candidate of candidates) {
+    const file = await imageFileFromPathCandidate(candidate);
+    if (!file) {
+      return [];
+    }
+    files.push(file);
+  }
+  return files;
+}
+
+async function imageFileFromPathCandidate(candidate: string): Promise<File | undefined> {
+  const resolvedPath = resolveLocalPath(candidate);
+  if (!resolvedPath || !looksLikeImagePath(resolvedPath)) {
+    return undefined;
+  }
+  try {
+    await access(resolvedPath);
+    const bytes = await readFile(resolvedPath);
+    const name = resolvedPath.split(/[\\/]/).at(-1) || "clipboard-image";
+    return new File([bytes], name, { type: mimeTypeFromPath(resolvedPath) });
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveLocalPath(candidate: string): string | undefined {
+  if (candidate.startsWith("file://")) {
+    try {
+      return fileURLToPath(candidate);
+    } catch {
+      return undefined;
+    }
+  }
+  if (candidate.startsWith("/") || /^[A-Za-z]:[\\/]/.test(candidate) || candidate.startsWith("~/")) {
+    return candidate.startsWith("~/")
+      ? `${process.env.HOME ?? ""}/${candidate.slice(2)}`
+      : candidate;
+  }
+  return undefined;
+}
+
+function looksLikeImagePath(value: string): boolean {
+  return /\.(png|jpe?g|gif|webp|bmp|tiff?|heic|avif)$/i.test(value);
+}
+
+function mimeTypeFromPath(value: string): string {
+  const extension = value.split(".").at(-1)?.toLowerCase();
+  switch (extension) {
+    case "png":
+      return "image/png";
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "gif":
+      return "image/gif";
+    case "webp":
+      return "image/webp";
+    case "bmp":
+      return "image/bmp";
+    case "tif":
+    case "tiff":
+      return "image/tiff";
+    case "heic":
+      return "image/heic";
+    case "avif":
+      return "image/avif";
+    default:
+      return "application/octet-stream";
+  }
 }
 
 export function handleComposeBackspace(context: RuntimeContext): void {

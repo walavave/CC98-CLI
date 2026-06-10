@@ -150,9 +150,9 @@ function renderQuoteSegment(value: string): string {
     return index === 0 ? rendered : ["", ...rendered];
   });
   if (lines.length === 0) {
-    return "\n";
+    return "";
   }
-  return `\n${lines.map((line) => `${theme.quote.prefix}${line}`).join("\n")}\n`;
+  return `${lines.map((line) => `${theme.quote.prefix}${line}`).join("\n")}\n`;
 }
 
 function flattenQuoteBlocks(value: string): string[] {

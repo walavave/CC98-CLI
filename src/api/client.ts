@@ -242,6 +242,16 @@ export class Cc98Client {
     return this.request<unknown>(endpoints.topic.vote(topicId));
   }
 
+  async submitTopicVote(topicId: number, items: number[]): Promise<unknown> {
+    return this.request<unknown>(endpoints.topic.vote(topicId), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ items })
+    });
+  }
+
   async getBasicTopics(ids: number[]): Promise<unknown> {
     return this.request<unknown>(endpoints.topic.basic(ids));
   }
@@ -307,6 +317,16 @@ export class Cc98Client {
 
   async getPostRateReasons(type: number): Promise<unknown> {
     return this.request<unknown>(endpoints.post.rateReasons(type));
+  }
+
+  async uploadFile(file: File): Promise<string[]> {
+    const formData = new FormData();
+    formData.append("files", file, file.name);
+    formData.append("contentType", "multipart/form-data");
+    return this.request<string[]>(endpoints.file.upload, {
+      method: "POST",
+      body: formData
+    });
   }
 
   async signin(): Promise<unknown> {
