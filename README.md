@@ -196,6 +196,33 @@ cc98 message recent
 cc98 update
 ```
 
+### 发帖
+
+```bash
+cc98 post <board-id|board-name> <file> [tag1] [tag2] [--ubb]
+```
+
+无 `--browser` 时通过 API 直接发布（默认 Markdown 格式），支持 `.md`、`.mdx`、`.txt` 等纯文本文件。本地图片会自动上传。
+
+```bash
+# 无标签版面，直接发
+cc98 post 编程技术 ./draft.md
+
+# 有标签版面，在文件名后跟标签
+cc98 post 日用交易 ./draft.txt 求 zjg
+
+# 以 UBB 格式发布
+cc98 post 编程技术 ./draft.md --ubb
+```
+
+Safari 支持自动填表（切换到 Markdown 编辑器并填入标题/正文）：
+
+```bash
+cc98 post 编程技术 ./draft.md --browser safari
+```
+
+使用 `--browser chrome` 会在 Chrome 中打开编辑器页面，草稿文件保留在临时目录供手动粘贴。
+
 查看完整命令：
 
 ```bash

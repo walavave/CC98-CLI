@@ -1,4 +1,5 @@
 import { getSidebarWidth } from "./renderer.js";
+import { clearTopicViewportAnchor } from "./topic-scroll.js";
 import { settingsItems, type TuiState } from "./tui-model.js";
 
 export function getSidebarDividerColumn(totalWidth: number, preferred?: number): number {
@@ -13,6 +14,7 @@ export function clampSidebarWidth(value: number, totalWidth: number): number {
 
 export function handleMouseScroll(state: TuiState, delta: number): void {
   if (state.mode === "topic" && state.topic) {
+    clearTopicViewportAnchor(state);
     const maxScroll = Math.max(0, state.topic.lines.length - 1);
     state.scroll = Math.max(0, Math.min(maxScroll, state.scroll + delta));
     return;

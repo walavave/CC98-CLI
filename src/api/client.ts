@@ -271,6 +271,10 @@ export class Cc98Client {
     return this.request<unknown>(endpoint, { signal: options.signal });
   }
 
+  async getBoardTags(boardId: number, options: RequestOptions = {}): Promise<unknown> {
+    return this.request<unknown>(endpoints.board.tags(boardId), { signal: options.signal });
+  }
+
   async searchBoards(keyword: string, options: RequestOptions = {}): Promise<unknown> {
     return this.request<unknown>(endpoints.board.search(keyword), { signal: options.signal });
   }
@@ -317,6 +321,35 @@ export class Cc98Client {
 
   async getPostRateReasons(type: number): Promise<unknown> {
     return this.request<unknown>(endpoints.post.rateReasons(type));
+  }
+
+  async createTopic(boardId: number, data: {
+    title: string;
+    content: string;
+    contentType?: number;
+    tag1?: number;
+    tag2?: number;
+    type?: number;
+    notifyPoster?: boolean;
+    isAnonymous?: boolean;
+    isVote?: boolean;
+    voteInfo?: unknown;
+  }): Promise<string> {
+    const result = await this.request<unknown>(endpoints.topic.create(boardId), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        contentType: 1,
+        type: 0,
+        notifyPoster: true,
+        isAnonymous: false,
+        clientType: 1,
+        ...data
+      })
+    });
+    return String(result);
   }
 
   async uploadFile(file: File): Promise<string[]> {

@@ -3,6 +3,7 @@ import type { TuiConfig } from "../../config.js";
 import { openBoard, openUserProfile } from "../data/content.js";
 import { jumpRelativeTopicFloor, jumpToTopicFloor, loadNextTopicPage, openTopic, updateTopicVote } from "../data/topic.js";
 import { currentTopicPost, getStatus, type TopicVoteState, type TuiState } from "../tui-model.js";
+import { clearTopicViewportAnchor } from "../topic-scroll.js";
 import type { RuntimeContext } from "./context.js";
 import { openTopicImageViewer, stepTopicImageViewer } from "./image-viewer.js";
 import { openComposeModal } from "./modals.js";
@@ -59,15 +60,11 @@ export function handleTopicMode(context: RuntimeContext, key: string, keyAction:
     return;
   }
   if ((key === "]" || key === "】" || keyAction === "topic.next-reply") && state.topic) {
-    jumpRelativeTopicFloor(state, 1);
-    state.status = getStatus(state);
-    render();
+    moveTopicFloor(state, render, 1);
     return;
   }
   if ((key === "[" || key === "【" || keyAction === "topic.previous-reply") && state.topic) {
-    jumpRelativeTopicFloor(state, -1);
-    state.status = getStatus(state);
-    render();
+    moveTopicFloor(state, render, -1);
     return;
   }
   if (key === "z") {
@@ -108,31 +105,22 @@ export function handleTopicMode(context: RuntimeContext, key: string, keyAction:
   }
   if (key === "j") {
     const wasAtEnd = isAtTopicEnd(state, config, context.getSize().rows);
-    jumpRelativeTopicFloor(state, 1);
-    state.status = getStatus(state);
-    render();
+    moveTopicFloor(state, render, 1);
     if (wasAtEnd && state.topic?.hasMore && !state.loadingMore) {
       void loadNextTopicPage(client, state, render, config, nextSignal(), true);
     }
     return;
   }
   if (key === "k") {
-    jumpRelativeTopicFloor(state, -1);
-    state.status = getStatus(state);
-    render();
+    moveTopicFloor(state, render, -1);
     return;
   }
   if (key === "\x1b[B") {
-    const maxScroll = Math.max(0, (state.topic?.lines.length ?? 0) - 1);
-    state.scroll = Math.min(maxScroll, state.scroll + 1);
-    state.status = getStatus(state);
-    render();
+    moveTopicLine(state, render, 1);
     return;
   }
   if (key === "\x1b[A") {
-    state.scroll = Math.max(0, state.scroll - 1);
-    state.status = getStatus(state);
-    render();
+    moveTopicLine(state, render, -1);
     return;
   }
   if (key === " ") {
@@ -173,6 +161,21 @@ async function handleTopicEnter(context: RuntimeContext): Promise<void> {
       resetTopicVoteSelection(context);
     }
   }
+}
+
+function moveTopicFloor(state: TuiState, render: () => void, delta: number): void {
+  clearTopicViewportAnchor(state);
+  jumpRelativeTopicFloor(state, delta);
+  state.status = getStatus(state);
+  render();
+}
+
+function moveTopicLine(state: TuiState, render: () => void, delta: number): void {
+  clearTopicViewportAnchor(state);
+  const maxScroll = Math.max(0, (state.topic?.lines.length ?? 0) - 1);
+  state.scroll = Math.max(0, Math.min(maxScroll, state.scroll + delta));
+  state.status = getStatus(state);
+  render();
 }
 
 function toggleTopicVoteSelection(context: RuntimeContext, optionId: number): void {

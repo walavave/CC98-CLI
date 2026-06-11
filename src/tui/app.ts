@@ -17,6 +17,7 @@ import {
 } from "./interactions.js";
 import { loadTuiKeymap } from "./keymap.js";
 import { draw } from "./renderer.js";
+import { clearTopicViewportAnchor } from "./topic-scroll.js";
 import { getStatus, navItems, type TuiState } from "./tui-model.js";
 import { Terminal } from "./render-core/terminal.js";
 
@@ -41,6 +42,7 @@ export async function runTui(): Promise<void> {
     navIndex: 0,
     itemIndex: 0,
     scroll: 0,
+    topicViewportScroll: undefined,
     historyLimit: config.tui.navigationHistoryLimit,
     sidebarWidth: undefined,
     draggingSidebarDivider: false,
@@ -99,6 +101,7 @@ export async function runTui(): Promise<void> {
         state.error = undefined;
         state.itemIndex = preserveSettingsSelection ? state.itemIndex : 0;
         state.scroll = 0;
+        clearTopicViewportAnchor(state);
         state.mode = nav.id === "settings" && state.mode === "settings" ? "settings" : "list";
         if (state.mode === "settings") {
           state.focus = "content";

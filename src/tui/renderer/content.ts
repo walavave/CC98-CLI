@@ -17,6 +17,7 @@ import {
   type ContentItem,
   type TuiState
 } from "../tui-model.js";
+import { getRenderedTopicVisibleScroll } from "../topic-scroll.js";
 
 export interface TopicDrawResult {
   rows: string[];
@@ -322,8 +323,7 @@ function drawTopic(state: TuiState, width: number, height: number, config: TuiCo
   rows.push(ruleLine(Math.max(0, width - 1)));
 
   const viewport = Math.max(0, height - rows.length - 1);
-  const maxScroll = Math.max(0, topic.lines.length - viewport);
-  const visibleScroll = getTopicVisibleScroll(state.scroll, viewport, maxScroll, config);
+  const visibleScroll = getRenderedTopicVisibleScroll(state, viewport, config);
   const body = topic.lines.slice(visibleScroll, visibleScroll + viewport);
 
   for (let index = 0; index < body.length; index += 1) {
@@ -570,14 +570,6 @@ function topicBodyLine(content: string, width: number, style?: (value: string) =
   const innerWidth = Math.max(0, width - 2);
   const padded = fit(content, innerWidth);
   return fit(` ${style ? style(padded) : padded} `, width);
-}
-
-function getTopicVisibleScroll(scroll: number, viewport: number, maxScroll: number, config: TuiConfig): number {
-  const current = Math.min(Math.max(0, scroll), Math.max(0, maxScroll + viewport - 1));
-  if (!config.topicScrollAtViewportEdge || viewport <= 0) {
-    return Math.min(current, maxScroll);
-  }
-  return Math.max(0, Math.min(maxScroll, current - viewport + 1));
 }
 
 function imagePlaceholderHeight(body: string[], start: number): number {

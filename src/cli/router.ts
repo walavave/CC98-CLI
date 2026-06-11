@@ -80,6 +80,7 @@ Usage:
   cc98 forum boards         Read all boards
   cc98 board <board-id>     List topics in a board
   cc98 topic <topic-id>     Read a topic
+  cc98 post <board> <file>  Publish a topic or open a prefilled draft
   cc98 user profile <id>    Read user profile
   cc98 message unread       Read unread counts
   cc98 notice system        Read system notices

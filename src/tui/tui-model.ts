@@ -40,6 +40,7 @@ export interface TuiState {
   navIndex: number;
   itemIndex: number;
   scroll: number;
+  topicViewportScroll?: number;
   historyLimit: number;
   sidebarWidth?: number;
   draggingSidebarDivider: boolean;
@@ -95,6 +96,7 @@ export interface TopicSnapshot {
   viewTitle: string;
   status: string;
   scroll: number;
+  topicViewportScroll?: number;
   topic: TopicReaderState;
   list: ListSnapshot;
 }

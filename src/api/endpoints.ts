@@ -41,7 +41,8 @@ export const endpoints = {
     topics: (boardId: number, from = 0, size = 20) =>
       `${base}/board/${boardId}/topic?from=${from}&size=${size}`,
     bestTopics: (boardId: number, from = 0, size = 20) =>
-      `${base}/topic/best/board/${boardId}?from=${from}&size=${size}`
+      `${base}/topic/best/board/${boardId}?from=${from}&size=${size}`,
+    tags: (boardId: number) => `${base}/board/${boardId}/tag-v2`
   },
   topic: {
     info: (topicId: number) => `${base}/topic/${topicId}`,
@@ -57,6 +58,7 @@ export const endpoints = {
     favoriteTopics: (from = 0, size = 11, order = 1, groupId = 0) =>
       `${base}/topic/me/favorite?from=${from}&size=${size}&order=${order}&groupid=${groupId}`,
     vote: (topicId: number) => `${base}/topic/${topicId}/vote`,
+    create: (boardId: number) => `${base}/board/${boardId}/topic`,
     basic: (ids: number[]) => `${base}/topic/basic?${ids.map((id) => `id=${id}`).join("&")}`,
     recent: (userId: number | undefined, from = 0, size = 11) =>
       userId === undefined

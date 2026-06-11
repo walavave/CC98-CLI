@@ -6,6 +6,7 @@ import {
   type TuiState,
   type ViewSnapshot
 } from "../tui-model.js";
+import { clearTopicViewportAnchor } from "../topic-scroll.js";
 
 export function createSearchState(board?: SearchListState["board"]): SearchListState {
   return {
@@ -74,6 +75,7 @@ export function prepareListView(
   state.error = undefined;
   state.itemIndex = 0;
   state.scroll = 0;
+  clearTopicViewportAnchor(state);
   state.topic = undefined;
   state.imageViewer = undefined;
   state.currentBoard = options.currentBoard;
@@ -95,6 +97,7 @@ function snapshotCurrentView(state: TuiState): ViewSnapshot {
         viewTitle: state.viewTitle,
         status: state.status,
         scroll: state.scroll,
+        topicViewportScroll: state.topicViewportScroll,
         topic: state.topic,
         list: snapshotCurrentList(state)
       }
@@ -130,6 +133,7 @@ function applyListSnapshot(state: TuiState, snapshot: ListSnapshot): void {
   state.loadingMore = false;
   state.error = undefined;
   state.topic = undefined;
+  clearTopicViewportAnchor(state);
   state.imageViewer = undefined;
   state.currentBoard = snapshot.currentBoard;
   state.currentFeed = snapshot.currentFeed;
@@ -150,6 +154,7 @@ function applyTopicSnapshot(
     viewTitle: string;
     status: string;
     scroll: number;
+    topicViewportScroll?: number;
     topic: TopicReaderState;
     list: ListSnapshot;
   }
@@ -162,6 +167,7 @@ function applyTopicSnapshot(
   state.items = snapshot.list.items;
   state.itemIndex = snapshot.list.itemIndex;
   state.scroll = snapshot.scroll;
+  state.topicViewportScroll = snapshot.topicViewportScroll;
   state.topic = snapshot.topic;
   state.imageViewer = undefined;
   state.currentBoard = snapshot.list.currentBoard;

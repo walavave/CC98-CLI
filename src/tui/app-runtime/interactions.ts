@@ -5,6 +5,7 @@ import { fill, length, pad, rect, split } from "../render-core/layout.js";
 import { getRenderedListItemIndexAtRow, getRenderedSearchItemIndexAtRow, getSidebarWidth } from "../renderer.js";
 import { cellWidth } from "../render-core/text.js";
 import { getStatus, navItems, settingsItems, type TopicLineEntry } from "../tui-model.js";
+import { getRenderedTopicVisibleScroll } from "../topic-scroll.js";
 import type { MouseEvent } from "../render-core/terminal.js";
 import type { RuntimeContext } from "./context.js";
 import { jumpToTopicFloor, openTopic } from "../data/topic.js";
@@ -38,11 +39,9 @@ export async function handleTopicClick(
   if (bodyLineIndex >= viewport) {
     return;
   }
-  const maxScroll = Math.max(0, state.topic.lines.length - viewport);
-  const visibleScroll = state.topic && context.config.topicScrollAtViewportEdge
-    ? Math.max(0, Math.min(maxScroll, state.scroll - viewport + 1))
-    : Math.min(state.scroll, maxScroll);
+  const visibleScroll = getRenderedTopicVisibleScroll(state, viewport, context.config);
   const absoluteLine = visibleScroll + bodyLineIndex;
+  state.topicViewportScroll = visibleScroll;
   state.scroll = Math.max(0, Math.min(state.topic.lines.length - 1, absoluteLine));
   state.status = getStatus(state);
   render();

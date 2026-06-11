@@ -19,6 +19,7 @@ import { CachedCc98Client } from "../cached-client.js";
 import type { TuiConfig } from "../../config.js";
 import { asArray, asBoolean, asNumber, asObject, isAbortError, normalizeInlineText } from "./utils.js";
 import { extractInlineLinkSpans, stripInternalLinkMarkup } from "../link.js";
+import { setTopicScrollLine } from "../topic-scroll.js";
 
 export async function openTopic(
   client: CachedCc98Client,
@@ -39,7 +40,7 @@ export async function openTopic(
   state.loading = true;
   state.loadingMore = false;
   state.error = undefined;
-  state.scroll = 0;
+  setTopicScrollLine(state, 0);
   state.imageViewer = undefined;
   state.currentBoard = boardContext ?? state.currentBoard;
   state.topic = {
@@ -156,7 +157,7 @@ export async function loadNextTopicPage(
     if (advanceAfterLoad && posts.length > 0) {
       const nextPost = state.topic.posts[previousPostCount];
       if (nextPost) {
-        state.scroll = nextPost.lineStart;
+        setTopicScrollLine(state, nextPost.lineStart);
       }
     }
   } catch (error) {
@@ -189,7 +190,7 @@ export async function jumpToTopicFloor(
 
   const loaded = findTopicPostByFloor(topic, floor);
   if (loaded) {
-    state.scroll = loaded.lineStart;
+    setTopicScrollLine(state, loaded.lineStart);
     state.status = getStatus(state);
     render();
     return;
@@ -215,7 +216,7 @@ export async function jumpToTopicFloor(
     topic.hasMore = posts.length === topic.size;
     const target = findTopicPostByFloor(topic, floor);
     if (target) {
-      state.scroll = target.lineStart;
+      setTopicScrollLine(state, target.lineStart);
     } else {
       state.status = `未找到 ${floor} 楼`;
     }
@@ -241,7 +242,7 @@ export function jumpRelativeTopicFloor(state: TuiState, delta: number): void {
   const currentIndex = current ? topic.posts.indexOf(current) : 0;
   const next = topic.posts[Math.min(topic.posts.length - 1, Math.max(0, currentIndex + delta))];
   if (next) {
-    state.scroll = next.lineStart;
+    setTopicScrollLine(state, next.lineStart);
   }
 }
 
@@ -664,6 +665,9 @@ function adjustTopicImageBlockHeight(
 
   if (originalLine < state.scroll) {
     state.scroll = Math.max(0, state.scroll + delta);
+  }
+  if (state.topicViewportScroll !== undefined && originalLine < state.topicViewportScroll) {
+    state.topicViewportScroll = Math.max(0, state.topicViewportScroll + delta);
   }
 }
 
