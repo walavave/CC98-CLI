@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { emotionPreviewRows } from "./emotion-preview.js";
-import { internalLinkEndMarker, internalLinkStartPrefix, renderLink, replacePlainLinks, shortUrl } from "../link.js";
+import { internalLinkEndMarker, internalLinkStartPrefix, renderLink, replaceBvNumbers, replacePlainLinks, shortUrl } from "../link.js";
 import { stripAnsi } from "../render-core/ansi.js";
 import { theme } from "../render-core/theme.js";
 
@@ -69,6 +69,7 @@ export function renderUbbToLines(content: string, width: number, options: Render
   text = normalizeMediaBlocks(text);
   text = stripUbb(text);
   text = decodeHtml(text);
+  text = replaceBvNumbers(text, links);
   text = replacePlainLinks(text, links);
 
   return {
@@ -119,6 +120,7 @@ export function renderMarkdownToLines(content: string, width: number, options: R
   text = text.replace(/^\s*\d+\.\s+/gm, (match) => match.replace(/^\s*/, ""));
   text = normalizeMediaBlocks(text);
   text = decodeHtml(text);
+  text = replaceBvNumbers(text, links);
   text = replacePlainLinks(text, links);
 
   return {

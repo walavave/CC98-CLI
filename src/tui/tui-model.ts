@@ -6,7 +6,7 @@ import type {
 
 export type ViewId = "hot" | "new" | "search" | "boards" | "following" | "notifications" | "messages" | "me" | "settings";
 export type FocusColumn = "nav" | "content";
-export type ModalType = "help" | "account" | "login" | "confirm" | "image" | "compose" | "emotion-picker" | null;
+export type ModalType = "help" | "account" | "login" | "confirm" | "image" | "compose" | "emotion-picker" | "rating" | null;
 export type SearchFocus = "tabs" | "input" | "results";
 export type SearchKind = "topic" | "board" | "user" | "board-topic";
 export type NoticeType = "system" | "at" | "reply";
@@ -75,6 +75,7 @@ export interface TuiState {
   confirmDialog?: ConfirmDialogState;
   imageViewer?: ImageViewerState;
   composeDialog?: ComposeDialogState;
+  ratingDialog?: RatingDialogState;
   helpScroll: number;
 }
 
@@ -203,6 +204,7 @@ export interface TopicPostEntry {
   id?: number;
   userId?: number;
   floor?: number;
+  isHot?: boolean;
   author: string;
   time: string;
   rawTime: string;
@@ -226,8 +228,10 @@ export interface TopicLineEntry {
   line: number;
   row: number;
   floor?: number;
-  kind: "header" | "divider" | "text" | "quote" | "image" | "link" | "blank" | "vote-info" | "vote-option" | "vote-action";
+  isHot?: boolean;
+  kind: "header" | "divider" | "text" | "quote" | "image" | "link" | "blank" | "vote-info" | "vote-option" | "vote-action" | "rating";
   text: string;
+  postId?: number;
   imageIndex?: number;
   imageUrl?: string;
   imagePreview?: string;
@@ -370,6 +374,13 @@ function searchKindLabelForStatus(search: SearchListState): string {
     case "board-topic":
       return search.board ? `版内 ${search.board.title ?? `#${search.board.boardId}`}` : "版内";
   }
+}
+
+export interface RatingDialogState {
+  postId: number;
+  type: 1 | 2;
+  reasons: Array<{ id: number; name: string }>;
+  selectedReasonId: number;
 }
 
 function followingKindLabelForStatus(kind: FollowingKind): string {

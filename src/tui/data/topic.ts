@@ -63,19 +63,25 @@ export async function openTopic(
   render();
 
   try {
-    const [topicRaw, postsRaw, favoriteRaw] = await Promise.all([
+    const [topicRaw, postsRaw, favoriteRaw, hotRaw] = await Promise.all([
       client.getTopic(topicId, force, signal),
       client.getTopicPosts(topicId, 0, 10, force, signal),
-      client.getTopicFavoriteState(topicId, force)
+      client.getTopicFavoriteState(topicId, force),
+      client.getHotPosts(topicId, { signal })
     ]);
     const topic = asObject(topicRaw);
-    const posts = asArray(postsRaw);
+    const apiPosts = asArray(postsRaw);
+    const hotPosts = asArray(hotRaw);
+    const hotFloors = new Set(hotPosts.map((p) => asNumber(asObject(p).floor)).filter((f) => f !== undefined));
+    const posts = hotPosts.length > 0 && apiPosts.length > 0
+      ? [apiPosts[0], ...hotPosts, ...apiPosts.slice(1)]
+      : apiPosts;
     const vote = asBoolean(topic.isVote ?? topic.IsVote)
       ? parseTopicVote(await client.getTopicVote(topicId, force))
       : undefined;
     const resolvedBoard = await resolveTopicBoardContext(client, topicBoardContext(topic) ?? state.currentBoard, force, signal);
     state.currentBoard = resolvedBoard;
-    const reader = buildTopicReader(topicId, topic, posts, 10, config, asBoolean(favoriteRaw) ?? false, resolvedBoard, vote);
+    const reader = buildTopicReader(topicId, topic, posts, 10, apiPosts.length, config, asBoolean(favoriteRaw) ?? false, resolvedBoard, vote, hotFloors);
     reader.forceRefresh = force;
     state.topic = reader;
     state.viewTitle = reader.title;
@@ -323,10 +329,12 @@ function buildTopicReader(
   topic: Record<string, unknown>,
   posts: unknown[],
   size: number,
+  loaded: number,
   config: TuiConfig,
   isFavorite: boolean,
   board?: BoardListState,
-  vote?: TopicVoteState
+  vote?: TopicVoteState,
+  hotFloors?: Set<number>
 ): TopicReaderState {
   const title = normalizeInlineText(String(topic.title ?? `#${topicId}`));
   const meta = [
@@ -335,7 +343,7 @@ function buildTopicReader(
     topic.replyCount !== undefined ? `${topic.replyCount} 回复` : undefined,
     topic.hitCount !== undefined ? `${topic.hitCount} 浏览` : undefined
   ].filter(Boolean).join(" · ");
-  const rendered = renderPosts(posts, currentTopicWidthEstimate(), config, 0, vote);
+  const rendered = renderPosts(posts, currentTopicWidthEstimate(), config, 0, vote, hotFloors);
 
   return {
     topicId,
@@ -346,9 +354,9 @@ function buildTopicReader(
     forceRefresh: false,
     lines: rendered.lines,
     posts: rendered.posts,
-    loaded: posts.length,
+    loaded,
     size,
-    hasMore: posts.length === size,
+    hasMore: loaded === size,
     imageCount: rendered.imageCount,
     linkCount: rendered.linkCount,
     floorInput: "",
@@ -379,7 +387,8 @@ function renderPosts(
   width: number,
   config: TuiConfig,
   lineOffset = 0,
-  vote?: TopicVoteState
+  vote?: TopicVoteState,
+  hotFloors?: Set<number>
 ): {
   lines: string[];
   posts: TopicPostEntry[];
@@ -396,6 +405,7 @@ function renderPosts(
     const lineStart = lineOffset + lines.length;
     const postLines: TopicLineEntry[] = [];
     const floorNumber = asNumber(post.floor);
+    const isHot = hotFloors && floorNumber !== undefined && hotFloors.has(floorNumber);
     const floor = floorNumber !== undefined ? `#${floorNumber}` : "#?";
     const author = String(post.userName ?? "匿名");
     const rawTime = typeof post.time === "string" ? post.time.replace("T", " ").slice(0, 19) : "";
@@ -404,6 +414,7 @@ function renderPosts(
     const dislikeCount = asNumber(post.dislikeCount) ?? 0;
     const likeState = normalizeLikeState(post.likeState);
     const reactions = ` · ${likeCount} 赞 · ${dislikeCount} 踩`;
+    const rating = formatAwards(post);
     const push = (
       text: string,
       kind: TopicLineEntry["kind"],
@@ -421,7 +432,7 @@ function renderPosts(
       });
     };
 
-    push(`${floor} ${author}${time ? ` · ${time}` : ""}${reactions}`, "header");
+    push(`${floor} ${author}${time ? ` · ${time}` : ""}${reactions}`, "header", { isHot });
     const contentWidth = Math.max(8, width - 2);
     push(theme.border.horizontal.repeat(contentWidth), "divider");
 
@@ -468,6 +479,10 @@ function renderPosts(
         linkSpans
       });
     });
+    const postId = asNumber(post.id);
+    if (rating) {
+      push(rating, "rating", { isHot, postId });
+    }
     push("", "blank");
     const preview = rendered.lines.find((value) =>
       value.trim() &&
@@ -486,7 +501,7 @@ function renderPosts(
       likeCount,
       dislikeCount,
       likeState,
-      rating: formatRating(post),
+      rating: formatAwards(post),
       preview,
       lineStart,
       lineEnd: lineOffset + lines.length - 1,
@@ -690,13 +705,37 @@ function parseBracketIndex(value: string, label: "image" | "link"): number | und
   return match ? Number(match[1]) : undefined;
 }
 
-function formatRating(post: Record<string, unknown>): string | undefined {
-  const value = post.rating ?? post.ratingCount ?? post.wealth ?? post.score;
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return String(value);
+function formatAwards(post: Record<string, unknown>): string | undefined {
+  // Support pre-computed rating string passed through re-render
+  if (typeof post.rating === "string") return post.rating;
+  const allAwards = asArray(post.awards) as Array<Record<string, unknown>>;
+  if (allAwards.length === 0) return undefined;
+
+  let up = 0;
+  let down = 0;
+  let wealth = 0;
+  let prestige = 0;
+
+  for (const a of allAwards) {
+    const c = String(a.content ?? "").trim();
+    if (/风评/.test(c)) {
+      if (c.includes("-")) down += 1;
+      else up += 1;
+    } else if (/财富/.test(c)) {
+      const m = c.match(/([+-]?\d+)/);
+      if (m) wealth += Number(m[1]);
+    } else if (/威望/.test(c)) {
+      const m = c.match(/([+-]?\d+)/);
+      if (m) prestige += Number(m[1]);
+    }
   }
-  if (typeof value === "string" && value.trim()) {
-    return value.trim();
+
+  const parts: string[] = [];
+  if (up > 0 || down > 0) {
+    const arrow = [up > 0 ? `↑${up}` : "", down > 0 ? `↓${down}` : ""].filter(Boolean).join(" ");
+    parts.push(`风评 ${arrow}`);
   }
-  return undefined;
+  if (wealth !== 0) parts.push(`财富 ${wealth > 0 ? "+" : ""}${wealth}`);
+  if (prestige !== 0) parts.push(`威望 ${prestige > 0 ? "+" : ""}${prestige}`);
+  return parts.length > 0 ? parts.join("  ") : undefined;
 }

@@ -144,6 +144,41 @@ export function handleLoginModal(context: RuntimeContext, key: string): void {
   }
 }
 
+export function handleRatingModal(context: RuntimeContext, key: string): void {
+  const { state, render } = context;
+  if (!state.ratingDialog || state.ratingDialog.reasons.length === 0) {
+    state.modal = null;
+    state.ratingDialog = undefined;
+    render();
+    return;
+  }
+  if (key === "j" || key === "\x1b[B") {
+    const i = state.ratingDialog.reasons.findIndex((r) => r.id === state.ratingDialog!.selectedReasonId);
+    const next = state.ratingDialog.reasons[Math.min(state.ratingDialog.reasons.length - 1, i + 1)];
+    if (next) state.ratingDialog.selectedReasonId = next.id;
+    render();
+    return;
+  }
+  if (key === "k" || key === "\x1b[A") {
+    const i = state.ratingDialog.reasons.findIndex((r) => r.id === state.ratingDialog!.selectedReasonId);
+    const prev = state.ratingDialog.reasons[Math.max(0, i - 1)];
+    if (prev) state.ratingDialog.selectedReasonId = prev.id;
+    render();
+    return;
+  }
+  if (key === "\r") {
+    submitRating(context);
+    return;
+  }
+  if (key === "\x1b" || key === "\x1b[D" || key === "h") {
+    state.modal = null;
+    state.ratingDialog = undefined;
+    state.status = getStatus(state);
+    render();
+    return;
+  }
+}
+
 export function handleConfirmModal(context: RuntimeContext, key: string): void {
   const { state, render, client, tokenStore, load } = context;
   if (!state.confirmDialog) {
@@ -235,6 +270,84 @@ export function openAccountOrLoginModal(context: RuntimeContext): void {
   }).catch((error: unknown) => {
     state.error = error instanceof Error ? error.message : String(error);
     state.status = "读取账号列表失败";
+    render();
+  });
+}
+
+export function openRatingDialog(context: RuntimeContext, postId: number, type: 1 | 2): void {
+  const { state, render, client } = context;
+  state.status = "正在获取风评理由...";
+  render();
+  client.getPostRateReasons(type).then((reasons: unknown) => {
+    const items = normalizeRatingReasons(reasons);
+    state.ratingDialog = { postId, type, reasons: items, selectedReasonId: items[0]?.id ?? 0 };
+    state.modal = "rating";
+    render();
+  }).catch((error: unknown) => {
+    state.error = error instanceof Error ? error.message : String(error);
+    state.status = "获取风评理由失败";
+    render();
+  });
+}
+
+function normalizeRatingReasons(value: unknown): Array<{ id: number; name: string }> {
+  const list = Array.isArray(value) ? value : [];
+  return list
+    .map((entry): { id: number; name: string } | null => {
+      if (entry === null || typeof entry !== "object") {
+        return null;
+      }
+      const reason = entry as Record<string, unknown>;
+      const name = String(
+        reason.name ??
+        reason.description ??
+        reason.reason ??
+        reason.text ??
+        reason.label ??
+        ""
+      ).trim();
+      const id = typeof reason.id === "number"
+        ? reason.id
+        : Number(reason.id ?? reason.reasonId ?? reason.value ?? 0);
+      if (!name) {
+        return null;
+      }
+      return {
+        id: Number.isFinite(id) ? id : 0,
+        name
+      };
+    })
+    .filter((item): item is { id: number; name: string } => item !== null);
+}
+
+export function submitRating(context: RuntimeContext): void {
+  const { state, render, client } = context;
+  const dialog = state.ratingDialog;
+  if (!dialog) return;
+  state.status = dialog.type === 1 ? "正在加风评..." : "正在扣风评...";
+  state.modal = null;
+  render();
+  client.ratePost(dialog.postId, dialog.selectedReasonId, dialog.type).then((raw: unknown) => {
+    const text = String(raw === null || raw === undefined ? "" : raw);
+    if (text === "ok") {
+      state.status = dialog.type === 1 ? "风评 +1" : "风评 -1";
+    } else {
+      const msgs: Record<string, string> = {
+        cannot_rate_yourself: "不能给自己评分",
+        post_more_than_7_days: "超过7天的发言无法评分",
+        you_cannot_rate: "没有资格评分",
+        board_cannot_rate: "该版面无法评分",
+        has_rated_today: "今天已经评分过了",
+        has_rated_this_post: "已对此发言评分过",
+        post_not_exists: "发言不存在",
+        topic_not_exists: "主题不存在",
+      };
+      state.status = msgs[text] ?? `评分失败：${text}`;
+    }
+  }).catch((error: unknown) => {
+    state.error = error instanceof Error ? error.message : String(error);
+    state.status = "评分请求失败";
+  }).finally(() => {
     render();
   });
 }

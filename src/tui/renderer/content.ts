@@ -351,12 +351,15 @@ function drawTopic(state: TuiState, width: number, height: number, config: TuiCo
         : topicBodyLine(bodyLine, width, textStyle.primary));
     } else if (lineEntry?.kind === "vote-info") {
       rows.push(topicBodyLine(bodyLine, width, textStyle.muted));
+    } else if (lineEntry?.kind === "rating") {
+      rows.push(topicBodyLine(bodyLine, width, textStyle.notice));
     } else if (bodyLine.startsWith("[image ")) {
       rows.push(topicBodyLine(bodyLine, width, textStyle.primarySoft));
     } else if (bodyLine.startsWith(theme.quote.prefix)) {
       rows.push(topicBodyLine(bodyLine, width, textStyle.muted));
     } else if (/^#\d+ /.test(bodyLine)) {
-      rows.push(topicBodyLine(bodyLine, width, textStyle.ok));
+      const headerStyle = lineEntry?.isHot ? textStyle.hot : textStyle.ok;
+      rows.push(topicBodyLine(bodyLine, width, headerStyle));
     } else if (isTopicDivider(bodyLine)) {
       rows.push(topicBodyLine(bodyLine, width, textStyle.rule));
     } else {

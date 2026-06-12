@@ -218,6 +218,14 @@ export class CachedCc98Client {
     );
   }
 
+  getHotPosts(topicId: number, opts?: { signal?: AbortSignal }): Promise<unknown> {
+    return this.cache.getOrSet(
+      `topic:hot:${topicId}`,
+      60 * second,
+      () => this.client.getHotPosts(topicId, { signal: opts?.signal })
+    );
+  }
+
   getTopicVote(topicId: number, force = false): Promise<unknown> {
     return this.cache.getOrSet(
       `topic:vote:${topicId}`,
@@ -225,6 +233,14 @@ export class CachedCc98Client {
       () => this.client.getTopicVote(topicId),
       { force }
     );
+  }
+
+  getPostRateReasons(type: number): Promise<unknown> {
+    return this.client.getPostRateReasons(type);
+  }
+
+  async ratePost(postId: number, reasonId: number, type: number): Promise<unknown> {
+    return this.client.ratePost(postId, reasonId, type);
   }
 
   async submitTopicVote(topicId: number, items: number[]): Promise<unknown> {

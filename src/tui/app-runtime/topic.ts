@@ -2,11 +2,11 @@ import { spawn } from "node:child_process";
 import type { TuiConfig } from "../../config.js";
 import { openBoard, openUserProfile } from "../data/content.js";
 import { jumpRelativeTopicFloor, jumpToTopicFloor, loadNextTopicPage, openTopic, updateTopicVote } from "../data/topic.js";
-import { currentTopicPost, getStatus, type TopicVoteState, type TuiState } from "../tui-model.js";
+import { currentTopicLine, currentTopicPost, getStatus, type TopicVoteState, type TuiState } from "../tui-model.js";
 import { clearTopicViewportAnchor } from "../topic-scroll.js";
 import type { RuntimeContext } from "./context.js";
 import { openTopicImageViewer, stepTopicImageViewer } from "./image-viewer.js";
-import { openComposeModal } from "./modals.js";
+import { openComposeModal, openRatingDialog } from "./modals.js";
 import { leaveTopicMode, showNotification } from "./state.js";
 
 export function handleTopicMode(context: RuntimeContext, key: string, keyAction: string | undefined): void {
@@ -71,16 +71,19 @@ export function handleTopicMode(context: RuntimeContext, key: string, keyAction:
     void openCurrentTopicBoard(context);
     return;
   }
-  if (keyAction === "topic.like-post") {
-    void reactToCurrentTopicPost(context, true);
+  if ((key === "A" || key === "S") && state.topic) {
+    const post = currentTopicPost(state.topic, state.scroll);
+    if (!post?.id) {
+      state.status = "当前楼层不可评分";
+      render();
+      return;
+    }
+    void openRatingDialog(context, post.id, key === "A" ? 1 : 2);
     return;
   }
-  if (key === "x") {
-    void copyCurrentTopicLink(context);
-    return;
-  }
-  if (keyAction === "topic.dislike-post") {
-    void reactToCurrentTopicPost(context, false);
+  if (keyAction === "topic.like-post" || keyAction === "topic.dislike-post") {
+    const isLike = keyAction === "topic.like-post";
+    void reactToCurrentTopicPost(context, isLike);
     return;
   }
   if (key === "d" || keyAction === "topic.favorite-topic") {

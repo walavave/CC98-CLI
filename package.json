@@ -1,6 +1,6 @@
 {
   "name": "@walavave/cc98-cli",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "description": "A native TypeScript CLI and TUI client for CC98.",
   "type": "module",
   "bin": {

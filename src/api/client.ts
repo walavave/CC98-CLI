@@ -210,6 +210,10 @@ export class Cc98Client {
     return this.request<JsonObject[]>(endpoints.topic.posts(topicId, from, size), { signal: options.signal });
   }
 
+  async getHotPosts(topicId: number, options: RequestOptions = {}): Promise<unknown> {
+    return this.request<unknown>(endpoints.topic.hotPosts(topicId), { signal: options.signal });
+  }
+
   async isTopicFavorite(topicId: number): Promise<unknown> {
     return this.request<unknown>(endpoints.topic.isFavorite(topicId));
   }
@@ -321,6 +325,16 @@ export class Cc98Client {
 
   async getPostRateReasons(type: number): Promise<unknown> {
     return this.request<unknown>(endpoints.post.rateReasons(type));
+  }
+
+  async ratePost(postId: number, reasonId: number, type: number): Promise<unknown> {
+    return this.request<unknown>(endpoints.post.rate(postId), {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ reasonId, type })
+    });
   }
 
   async createTopic(boardId: number, data: {

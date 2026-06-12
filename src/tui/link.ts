@@ -113,6 +113,19 @@ export function renderLink(url: string, label: string | undefined, links: string
   return `${displayLabel} ${wrapInteractiveLink(index, underline("[点击下载]"))}`.trim();
 }
 
+// Match standalone BV numbers (not inside existing URLs)
+const bvNumberPattern = /(?<![A-Za-z0-9/])(BV[A-Za-z0-9]{10})(?![A-Za-z0-9])/g;
+
+/**
+ * Replace standalone BV numbers with B站 video URLs so they become
+ * clickable links in rendered posts.
+ */
+export function replaceBvNumbers(value: string, links: string[]): string {
+  return value.replace(bvNumberPattern, (_match, bvid: string) => {
+    return renderLink(`https://www.bilibili.com/video/${bvid}`, bvid, links);
+  });
+}
+
 export function replacePlainLinks(value: string, links: string[]): string {
   let output = "";
   let cursor = 0;

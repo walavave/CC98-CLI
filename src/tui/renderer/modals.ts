@@ -40,6 +40,9 @@ export function drawModalFrame(baseLines: string[], state: TuiState, width: numb
   if (state.modal === "emotion-picker" && state.composeDialog) {
     return drawEmotionPickerModal(baseLines, state, width, height);
   }
+  if (state.modal === "rating" && state.ratingDialog) {
+    return { text: drawRatingModal(baseLines, state, width, height) };
+  }
   return undefined;
 }
 
@@ -71,6 +74,7 @@ function drawHelpModal(baseLines: string[], state: TuiState, width: number, heig
     "   c           默认打开评论框，可在 keymap 中改",
     "   Shift+c     引用当前楼层后发表评论",
     "   a/s/d       赞/踩/收藏",
+    "   A/S         加风评/扣风评",
     "   Enter       在投票项上勾选，在按钮上提交/重置",
     "   z           进入帖子对应版面",
     "   x           复制帖子链接",
@@ -399,6 +403,39 @@ function tintBox(canvas: Canvas, area: { x: number; y: number; width: number; he
     { x: area.x, y: area.y + area.height - 1, width: area.width, height: 1 },
     [textStyleWithStyle(`${theme.border.bottomLeft}${theme.border.horizontal.repeat(Math.max(0, area.width - 2))}${theme.border.bottomRight}`, style)]
   );
+}
+
+function drawRatingModal(baseLines: string[], state: TuiState, width: number, height: number): string {
+  const dialog = state.ratingDialog;
+  if (!dialog) {
+    return baseLines.join("\n");
+  }
+
+  const canvas = new Canvas(width, height);
+  canvas.drawLines(rect(width, height), baseLines);
+
+  const label = dialog.type === 1 ? "加风评" : "扣风评";
+  const innerWidth = Math.max(26, Math.min(width - 6, 42));
+  const rows = [
+    textStyle.primaryBold(` ${label}`),
+    textStyle.muted(" j/k 选择理由"),
+    ""
+  ];
+
+  for (const reason of dialog.reasons) {
+    const selected = reason.id === dialog.selectedReasonId;
+    const line = ` ${selected ? theme.marker.selected : "○"} ${reason.name}`;
+    rows.push(selected ? selectedLine(line, innerWidth, true) : fit(line, innerWidth));
+  }
+
+  rows.push("");
+  rows.push(textStyle.muted(" Enter 确认  Esc 取消"));
+
+  const modalWidth = Math.min(width - 2, innerWidth + 2);
+  const modalHeight = Math.min(height - 2, rows.length + 2);
+  const area = center(rect(width, height), modalWidth, modalHeight);
+  canvas.overlay(area, rows, { fill: theme.color.panelBg });
+  return canvas.toString();
 }
 
 function textStyleWithStyle(content: string, style: string): string {

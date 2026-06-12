@@ -14,6 +14,7 @@ import {
   handleAccountModal,
   handleConfirmModal,
   handleLoginModal,
+  handleRatingModal,
   insertComposeText,
   pasteClipboardIntoCompose,
   moveComposeCursor,
@@ -62,6 +63,11 @@ export function createKeyHandler(context: RuntimeContext): (key: string) => void
 
     if (state.modal === "confirm") {
       handleConfirmModal(context, key);
+      return;
+    }
+
+    if (state.modal === "rating") {
+      handleRatingModal(context, key);
       return;
     }
 

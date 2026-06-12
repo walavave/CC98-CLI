@@ -1,5 +1,5 @@
 import { CachedCc98Client } from "../cached-client.js";
-import type { NoticeType, TuiState } from "../tui-model.js";
+import type { ContentItem, NoticeType, TuiState } from "../tui-model.js";
 import { describeFeedStatus } from "./feed-status.js";
 import { topicItem } from "./items.js";
 import { prepareListView } from "./navigation-state.js";
@@ -269,7 +269,9 @@ export async function loadNextUserTopicPage(
       signal
     ));
     const nextItems = topics.slice(0, currentUser.size).map((topic) => topicItem(topic));
-    state.items = [...state.items, ...nextItems];
+            const seen = new Set(state.items.map((item) => feedItemKey(item)));
+            const fresh = nextItems.filter((item) => !seen.has(feedItemKey(item)));
+    state.items = [...state.items, ...fresh];
     currentUser.loaded += nextItems.length;
     currentUser.hasMore = topics.length > currentUser.size;
     state.status = describeUserProfileStatus(state);
@@ -307,7 +309,9 @@ export async function loadNextFeedPage(
 
   try {
     const { items: nextItems, received } = await loadFeedPageItems(client, feed, false, signal);
-    state.items = [...state.items, ...nextItems];
+            const seen = new Set(state.items.map((item) => feedItemKey(item)));
+            const fresh = nextItems.filter((item) => !seen.has(feedItemKey(item)));
+    state.items = [...state.items, ...fresh];
     if (feed.kind === "messages") {
       applyMessageUnreadState(state);
     }
@@ -343,6 +347,15 @@ function noticeFeedKind(type: NoticeType): NonNullable<TuiState["currentFeed"]>[
 
 function applyMessageUnreadState(state: TuiState): void {
   state.messageUnreadByUserId = mergeMessageUnreadState(state);
+}
+
+function feedItemKey(item: ContentItem): string {
+  return [
+    item.topicId ?? "",
+    item.chatUserId ?? "",
+    item.userId ?? "",
+    item.action ?? ""
+  ].join(":");
 }
 
 export function mergeMessageUnreadState(state: TuiState): Record<number, number> {

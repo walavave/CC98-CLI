@@ -15,6 +15,7 @@ export const theme = {
     rule: fg(181, 196, 255),
     notice: fg(245, 101, 101),
     danger: fg(245, 101, 101),
+    hot: fg(245, 101, 101),
     ok: fg(91, 207, 140),
     male: fg(105, 181, 255),
     female: fg(255, 128, 176)
@@ -76,6 +77,9 @@ export const textStyle = {
   },
   dangerBold(content: string): string {
     return styled(content, `${theme.color.danger}${ansi.bold}`);
+  },
+  hot(content: string): string {
+    return styled(content, `${theme.color.hot}${ansi.bold}`);
   },
   ok(content: string): string {
     return styled(content, theme.color.ok);

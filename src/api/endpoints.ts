@@ -57,6 +57,7 @@ export const endpoints = {
       `${base}/topic/search/board/${boardId}?keyword=${encodeURIComponent(keyword)}&from=${from}&size=${size}`,
     favoriteTopics: (from = 0, size = 11, order = 1, groupId = 0) =>
       `${base}/topic/me/favorite?from=${from}&size=${size}&order=${order}&groupid=${groupId}`,
+    hotPosts: (topicId: number) => `${base}/topic/${topicId}/hot-post`,
     vote: (topicId: number) => `${base}/topic/${topicId}/vote`,
     create: (boardId: number) => `${base}/board/${boardId}/topic`,
     basic: (ids: number[]) => `${base}/topic/basic?${ids.map((id) => `id=${id}`).join("&")}`,
@@ -68,7 +69,8 @@ export const endpoints = {
   post: {
     reactionState: (postId: number) => `${base}/post/${postId}/like`,
     topicReply: (topicId: number) => `${base}/topic/${topicId}/post`,
-    rateReasons: (type: number) => `${base}/post/rating-reason?type=${type}`
+    rateReasons: (type: number) => `${base}/post/rating-reason?type=${type}`,
+    rate: (postId: number) => `${base}/post/${postId}/rating-v2`
   },
   file: {
     upload: `${base}/file`
