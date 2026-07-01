@@ -32,6 +32,13 @@ export interface ContentItem {
   chatUserId?: number;
   userId?: number;
   sortTime?: number;
+  /** UBB/MD rendered content for chat messages */
+  chatContent?: {
+    lines: string[];
+    images: string[];
+    /** Terminal image preview data, parallel to images. Undefined = not loaded */
+    previews: Array<{ token: string; rows: number } | undefined>;
+  };
 }
 
 export interface TuiState {

@@ -11,6 +11,7 @@ import { openTopic } from "../../data/topic.js";
 import type { RuntimeContext } from "../context.js";
 import { openSelectedMeItem, refreshCurrentMeView, toggleCurrentUserFollow } from "../me.js";
 import { openComposeModal } from "../modals.js";
+import { openChatImageViewer } from "../image-viewer.js";
 import { handleFollowingContentFocus } from "./following.js";
 import { leaveContentMode } from "../state.js";
 import { handleSearchContentFocus } from "./search.js";
@@ -53,7 +54,11 @@ export function handleContentFocus(context: RuntimeContext, key: string, keyActi
     render();
     return;
   }
-  if ((key === "n" || key === " ") && state.currentChat) {
+  if (key === " " && state.currentChat) {
+    void openChatImageViewer(context);
+    return;
+  }
+  if (key === "n" && state.currentChat) {
     void loadNextChatPage(client, state, render, nextSignal());
     return;
   }

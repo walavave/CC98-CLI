@@ -16,6 +16,12 @@ interface OpenComposeOptions {
 
 export function handleAccountModal(context: RuntimeContext, key: string): void {
   const { state, render, tokenStore, load, client } = context;
+  if (key === "n") {
+    state.loginForm = createLoginForm();
+    state.modal = "login";
+    render();
+    return;
+  }
   if (key === "j" || key === "\x1b[B") {
     state.accountModal.selectedIndex = Math.min(state.accountModal.accounts.length, state.accountModal.selectedIndex + 1);
     render();

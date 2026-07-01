@@ -3,6 +3,7 @@ import { renderUserGenderPrefix } from "./user-gender.js";
 import { asArray, asNumber, asObject, formatTime, normalizeInlineText, normalizePreview, timestampOf } from "./utils.js";
 import type { ContentItem, NoticeType, TuiState } from "../tui-model.js";
 import { CachedCc98Client } from "../cached-client.js";
+import { renderUbbToLines } from "../media/ubb-renderer.js";
 
 export async function loadChatUserNames(
   client: CachedCc98Client,
@@ -97,7 +98,13 @@ export function hasUnreadChatItem(items: ContentItem[]): boolean {
   return items.some((item) => item.chatUserId !== undefined && (item.unread || (item.unreadCount ?? 0) > 0));
 }
 
-export function chatMessageItems(messages: unknown[], otherName: string, otherUserId: number): ContentItem[] {
+export function chatMessageItems(
+  messages: unknown[],
+  otherName: string,
+  otherUserId: number,
+  width?: number
+): ContentItem[] {
+  const renderWidth = width ?? 80;
   return [...messages].reverse().map((messageRaw) => {
     const message = asObject(messageRaw);
     const receiverId = asNumber(message.receiverId ?? message.ReceiverId);
@@ -105,11 +112,20 @@ export function chatMessageItems(messages: unknown[], otherName: string, otherUs
     const time = typeof message.time === "string"
       ? message.time.replace("T", " ").slice(0, 16)
       : "";
-    const content = normalizeInlineText(String(message.content ?? message.Content ?? ""));
+    const rawContent = String(message.content ?? message.Content ?? "");
+    const content = normalizeInlineText(rawContent);
+    const rendered = rawContent ? renderUbbToLines(rawContent, renderWidth) : undefined;
     return {
       title: isMine ? `我 -> ${otherName}` : `${otherName} -> 我`,
       meta: [time, receiverId !== undefined ? `receiver #${receiverId}` : undefined].filter(Boolean).join(" · "),
-      detail: content || "(空消息)"
+      detail: content || "(空消息)",
+      chatContent: rendered
+        ? {
+            lines: rendered.lines,
+            images: rendered.images,
+            previews: new Array(rendered.images.length)
+          }
+        : undefined
     };
   });
 }

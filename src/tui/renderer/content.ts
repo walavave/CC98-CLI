@@ -129,6 +129,7 @@ export function drawMain(state: TuiState, width: number, height: number, config:
   }
 
   const rows: string[] = [];
+  const imageOverlays: Array<{ row: number; token: string }> = [];
   rows.push(textStyle.primaryBold(` ${state.viewTitle}`));
   rows.push(ruleLine(Math.max(0, width - 1)));
 
@@ -151,8 +152,35 @@ export function drawMain(state: TuiState, width: number, height: number, config:
     if (itemValue.meta) {
       rows.push(fit(textStyle.muted(`  ${itemValue.meta}`), width));
     }
-    for (const detailLine of getListItemDetailLines(itemValue, width, wrapDetail, inlineDetail)) {
-      rows.push(fit(textStyle.muted(`  ${detailLine}`), width));
+    if (itemValue.chatContent) {
+      const cc = itemValue.chatContent;
+      for (let li = 0; li < cc.lines.length; li += 1) {
+        const renderedLine = cc.lines[li];
+        if (renderedLine.startsWith("[image ")) {
+          const imgMatch = /\[image (\d+)/.exec(renderedLine);
+          const imgIndex = imgMatch ? Number(imgMatch[1]) : undefined;
+          const preview = imgIndex ? cc.previews[imgIndex - 1] : undefined;
+          const imageRows = Math.max(1, preview?.rows ?? 1);
+          if (preview && preview.token) {
+            imageOverlays.push({ row: rows.length, token: preview.token });
+            for (let r = 0; r < imageRows; r += 1) {
+              rows.push(fit(textStyle.muted(`  `), width));
+            }
+          } else {
+            rows.push(fit(textStyle.primarySoft(`  ${renderedLine}`), width));
+          }
+          // Skip filler blank lines from imageBlock padding
+          while (li + 1 < cc.lines.length && cc.lines[li + 1].trim() === "") {
+            li += 1;
+          }
+        } else {
+          rows.push(fit(textStyle.muted(`  ${renderedLine}`), width));
+        }
+      }
+    } else {
+      for (const detailLine of getListItemDetailLines(itemValue, width, wrapDetail, inlineDetail)) {
+        rows.push(fit(textStyle.muted(`  ${detailLine}`), width));
+      }
     }
   });
 
@@ -167,7 +195,7 @@ export function drawMain(state: TuiState, width: number, height: number, config:
     rows.push(fit(textStyle.muted("  ↓ 到底自动继续加载，或按 n/Space"), width));
   }
 
-  return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
+  return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays };
 }
 
 export function drawStatusBar(state: TuiState, width: number): string {
@@ -413,13 +441,37 @@ function renderListTitleRow(
   return genderStyled(content, theme.color.muted);
 }
 
+/** Compute the rendered row count for a chat content block, accounting for image preview expansion. */
+function computeChatContentHeight(cc: { lines: string[]; previews: Array<{ rows?: number } | undefined> }): number {
+  let h = 0;
+  for (let li = 0; li < cc.lines.length; li += 1) {
+    const line = cc.lines[li];
+    if (line.startsWith("[image ")) {
+      const m = /\[image (\d+)/.exec(line);
+      const idx = m ? Number(m[1]) : undefined;
+      const pv = idx ? cc.previews[idx - 1] : undefined;
+      h += Math.max(1, pv?.rows ?? 1);
+      // Skip filler blank lines from imageBlock padding
+      while (li + 1 < cc.lines.length && cc.lines[li + 1].trim() === "") {
+        li += 1;
+      }
+    } else {
+      h += 1;
+    }
+  }
+  return h;
+}
+
 function getListItemHeight(
-  itemValue: { meta?: string; detail?: string; topicId?: number },
+  itemValue: { meta?: string; detail?: string; topicId?: number; chatContent?: { lines: string[]; previews: Array<{ rows?: number } | undefined> } },
   width: number,
   wrapDetail: boolean,
   inlineDetail: boolean
 ): number {
-  return 1 + (itemValue.meta ? 1 : 0) + getListItemDetailLines(itemValue, width, wrapDetail, inlineDetail).length;
+  const detailHeight = itemValue.chatContent
+    ? computeChatContentHeight(itemValue.chatContent)
+    : getListItemDetailLines(itemValue, width, wrapDetail, inlineDetail).length;
+  return 1 + (itemValue.meta ? 1 : 0) + detailHeight;
 }
 
 function getVisibleItems(

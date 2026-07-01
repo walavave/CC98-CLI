@@ -6,6 +6,7 @@ import { TokenStore } from "../storage/token-store.js";
 import { VpnStore } from "../storage/vpn-store.js";
 import { createLoginForm } from "./account-modal.js";
 import { mergeMessageUnreadState } from "./data/content.js";
+import { isAuthError, refreshAccounts } from "./data/accounts.js";
 import { createSearchState } from "./data/navigation-state.js";
 import { loadView } from "./data/view-loader.js";
 import { createKeyHandler, createMouseHandler } from "./app-runtime.js";
@@ -152,8 +153,18 @@ export async function runTui(): Promise<void> {
           if (closed || version !== loadVersion) {
             return;
           }
-          state.error = error instanceof Error ? error.message : String(error);
-          state.items = [];
+
+          if (isAuthError(error)) {
+            state.error = undefined;
+            state.items = [];
+            state.status = "登录状态已失效，请重新登录";
+            await refreshAccounts(state, tokenStore);
+            state.loginForm = createLoginForm();
+            state.modal = "login";
+          } else {
+            state.error = error instanceof Error ? error.message : String(error);
+            state.items = [];
+          }
         } finally {
           if (!closed && version === loadVersion) {
             state.loading = false;

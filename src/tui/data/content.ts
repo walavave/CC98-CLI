@@ -11,6 +11,9 @@ import {
   loadFeedPageItems,
   loadNoticeItems
 } from "./view-items.js";
+import { isEmotionAssetPath, loadEmotionPreview } from "../media/emotion-preview.js";
+import { imagePreviewRows, loadImagePreview, supportsImagePreview } from "../media/image-preview.js";
+import { getSidebarWidth } from "../renderer.js";
 
 export async function openBoard(
   client: CachedCc98Client,
@@ -68,15 +71,18 @@ export async function openChat(
   }
   render();
 
+  let contentWidth = 0;
+
   try {
     const messages = asArray(await client.getChatHistory(userId, 0, chat.size, force, signal));
-    state.items = chatMessageItems(messages, title, userId);
+    contentWidth = mainContentWidthEstimate();
+    state.items = chatMessageItems(messages, title, userId, contentWidth);
     chat.loaded = messages.length;
     chat.hasMore = messages.length === chat.size;
     state.itemIndex = Math.max(0, state.items.length - 1);
     state.status = chat.hasMore
-      ? "私信：j/k 滚动  c 私信  n/Space 更早消息  Esc/Backspace 返回联系人  h 返回左栏"
-      : "私信：j/k 滚动  c 私信  Esc/Backspace 返回联系人  h 返回左栏";
+      ? "私信：j/k 滚动  c 私信  n 更早消息  Space 看图  Esc/Backspace 返回联系人"
+      : "私信：j/k 滚动  c 私信  Space 看图  Esc/Backspace 返回联系人";
   } catch (error) {
     if (isAbortError(error)) {
       return;
@@ -86,6 +92,9 @@ export async function openChat(
   } finally {
     state.loading = false;
     render();
+    if (!state.error && contentWidth > 0 && state.items.some((item) => item.chatContent)) {
+      void loadChatImagePreviews(state.items, render, contentWidth);
+    }
   }
 }
 
@@ -224,15 +233,16 @@ export async function loadNextChatPage(
   try {
     const chat = state.currentChat;
     const messages = asArray(await client.getChatHistory(chat.userId, chat.loaded, chat.size, false, signal));
-    const olderItems = chatMessageItems(messages, chat.title, chat.userId);
+    const contentWidth = mainContentWidthEstimate();
+    const olderItems = chatMessageItems(messages, chat.title, chat.userId, contentWidth);
     state.items = [...olderItems, ...state.items];
     state.itemIndex += olderItems.length;
     state.scroll += olderItems.length;
     chat.loaded += messages.length;
     chat.hasMore = messages.length === chat.size;
     state.status = chat.hasMore
-      ? "私信：j/k 滚动  c 私信  n/Space 更早消息  Esc/Backspace 返回联系人  h 返回左栏"
-      : "已到最早私信；j/k 滚动  c 私信  Esc/Backspace 返回联系人  h 返回左栏";
+      ? "私信：j/k 滚动  c 私信  n 更早消息  Space 看图  Esc/Backspace 返回联系人"
+      : "已到最早私信；j/k 滚动  c 私信  Space 看图  Esc/Backspace 返回联系人";
   } catch (error) {
     if (isAbortError(error)) {
       return;
@@ -242,6 +252,10 @@ export async function loadNextChatPage(
   } finally {
     state.loadingMore = false;
     render();
+    const hasChatContent = state.items.some((item) => item.chatContent);
+    if (!state.error && hasChatContent) {
+      void loadChatImagePreviews(state.items, render, mainContentWidthEstimate());
+    }
   }
 }
 
@@ -385,5 +399,54 @@ function noticeListTitle(type: NoticeType): string {
       return "@通知";
     case "reply":
       return "回复通知";
+  }
+}
+
+/** Estimate the usable content width for chat message rendering. */
+function mainContentWidthEstimate(): number {
+  const termWidth = process.stdout.columns || Number(process.env.COLUMNS) || 80;
+  const sbWidth = getSidebarWidth(termWidth);
+  const sbRuleWidth = sbWidth > 0 ? 1 : 0;
+  return Math.max(24, termWidth - sbWidth - sbRuleWidth - 2);
+}
+
+/**
+ * Asynchronously load terminal image previews for chat messages.
+ * Follows the same pattern as loadTopicImagePreviews in topic.ts.
+ */
+async function loadChatImagePreviews(
+  items: ContentItem[],
+  render: () => void,
+  width: number
+): Promise<void> {
+  if (!supportsImagePreview()) {
+    return;
+  }
+
+  for (const item of items) {
+    if (!item.chatContent) {
+      continue;
+    }
+    const chatContent = item.chatContent;
+    for (let index = 0; index < chatContent.images.length; index += 1) {
+      if (chatContent.previews[index]) {
+        continue; // Already loaded
+      }
+      const url = chatContent.images[index];
+      if (!url) {
+        continue;
+      }
+      try {
+        const maxRows = isEmotionAssetPath(url) ? 3 : imagePreviewRows;
+        const loadFn = isEmotionAssetPath(url) ? loadEmotionPreview : loadImagePreview;
+        const preview = await loadFn(url, width, maxRows);
+        if (preview) {
+          chatContent.previews[index] = { token: preview.token, rows: preview.size.rows };
+          render();
+        }
+      } catch {
+        // Keep placeholder text if loading fails
+      }
+    }
   }
 }

@@ -77,7 +77,7 @@ export function drawAccountModal(
   const addSelected = state.selectedIndex === state.accounts.length;
   rows.push(`${addSelected ? textStyle.primary(theme.marker.pointer) : " "} ${textStyle.primary("新账号登录")}`);
   rows.push("");
-  rows.push(textStyle.muted("Enter 选择  Esc 返回"));
+  rows.push(textStyle.muted("Enter 选择  n 新账号登录  Esc 返回"));
 
   return drawFramedModal(baseLines, rows, width, height, 58);
 }

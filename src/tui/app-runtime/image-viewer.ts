@@ -1,6 +1,7 @@
 import { isEmotionAssetPath } from "../media/emotion-preview.js";
 import { loadModalImagePreview, supportsImagePreview } from "../media/image-preview.js";
 import { currentTopicLine, currentTopicPost, getStatus } from "../tui-model.js";
+import type { ContentItem, TuiState } from "../tui-model.js";
 import type { RuntimeContext } from "./context.js";
 
 export function handleImageModal(context: RuntimeContext, key: string): void {
@@ -23,6 +24,42 @@ export function handleImageModal(context: RuntimeContext, key: string): void {
   if (key === "\x1b[D" || key === "k") {
     void stepTopicImageViewer(context, -1);
   }
+}
+
+export function getChatMessageImages(item: ContentItem): string[] {
+  if (!item.chatContent) {
+    return [];
+  }
+  return item.chatContent.images.filter((url) => !isEmotionAssetPath(url));
+}
+
+export async function openChatImageViewer(context: RuntimeContext): Promise<void> {
+  const { state, render } = context;
+  if (!state.currentChat) {
+    return;
+  }
+  if (!supportsImagePreview()) {
+    state.status = "当前终端不支持图片大图预览";
+    render();
+    return;
+  }
+
+  const selected = state.items[state.itemIndex];
+  const images = getChatMessageImages(selected);
+  if (images.length === 0) {
+    state.status = "当前消息没有可预览的图片";
+    render();
+    return;
+  }
+
+  state.imageViewer = {
+    images,
+    index: 0,
+    loading: true
+  };
+  state.modal = "image";
+  render();
+  await refreshTopicImageViewer(context, 0);
 }
 
 export async function openTopicImageViewer(context: RuntimeContext): Promise<void> {

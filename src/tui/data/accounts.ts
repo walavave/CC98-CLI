@@ -35,3 +35,13 @@ export function normalizeLoginMessage(error: unknown): string {
   }
   return String(error);
 }
+
+export function isAuthError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return message.includes("not logged in") ||
+    message.includes("token expired");
+}
