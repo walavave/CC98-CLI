@@ -26,6 +26,10 @@ jobs:
 
       - run: npm ci
 
+      - name: Verify tag matches package version
+        run: |
+          test "v$(npm pkg get version | tr -d '\"')" = "$GITHUB_REF_NAME"
+
       - run: npm run check
 
       - name: Build release notes
