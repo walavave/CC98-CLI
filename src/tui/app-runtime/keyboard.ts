@@ -15,6 +15,7 @@ import {
   handleConfirmModal,
   handleLoginModal,
   handleRatingModal,
+  handleHiddenPatternsModal,
   insertComposeText,
   pasteClipboardIntoCompose,
   moveComposeCursor,
@@ -68,6 +69,10 @@ export function createKeyHandler(context: RuntimeContext): (key: string) => void
 
     if (state.modal === "rating") {
       handleRatingModal(context, key);
+      return;
+    }
+    if (state.modal === "hidden-patterns") {
+      handleHiddenPatternsModal(context, key);
       return;
     }
 

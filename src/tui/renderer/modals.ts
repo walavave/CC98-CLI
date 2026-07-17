@@ -43,8 +43,16 @@ export function drawModalFrame(baseLines: string[], state: TuiState, width: numb
   if (state.modal === "rating" && state.ratingDialog) {
     return { text: drawRatingModal(baseLines, state, width, height) };
   }
+  if (state.modal === "hidden-patterns" && state.hiddenPatternsDialog) {
+    const canvas = new Canvas(width, height);
+    canvas.drawLines(rect(width, height), baseLines);
+    const d = state.hiddenPatternsDialog;
+    const rows = [" 一键隐藏", "", `${d.selectedIndex === 0 ? ">" : " "} ${d.patterns.includes("cy") ? "[x]" : "[ ]"} cy`, `${d.selectedIndex === 1 ? ">" : " "} ${d.patterns.includes("bd") ? "[x]" : "[ ]"} bd (含 bdbd)`, `${d.selectedIndex === 2 ? ">" : " "} ${d.patterns.includes("[ac01]") ? "[x]" : "[ ]"} [ac01]`, `${d.selectedIndex === 3 ? ">" : " "} 自定义: ${d.custom}`, "", " Enter 选择/取消选择  Esc 关闭"];
+    const area = center(rect(width, height), Math.min(width - 4, 42), rows.length + 2); canvas.overlay(area, rows); return { text: canvas.toString() };
+  }
   return undefined;
 }
+
 
 function drawHelpModal(baseLines: string[], state: TuiState, width: number, height: number): string {
   const canvas = new Canvas(width, height);

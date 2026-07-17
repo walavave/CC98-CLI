@@ -6,7 +6,7 @@ import type {
 
 export type ViewId = "hot" | "new" | "search" | "boards" | "following" | "notifications" | "messages" | "me" | "settings";
 export type FocusColumn = "nav" | "content";
-export type ModalType = "help" | "account" | "login" | "confirm" | "image" | "compose" | "emotion-picker" | "rating" | null;
+export type ModalType = "help" | "account" | "login" | "confirm" | "image" | "compose" | "emotion-picker" | "rating" | "hidden-patterns" | null;
 export type SearchFocus = "tabs" | "input" | "results";
 export type SearchKind = "topic" | "board" | "user" | "board-topic";
 export type NoticeType = "system" | "at" | "reply";
@@ -84,6 +84,7 @@ export interface TuiState {
   composeDialog?: ComposeDialogState;
   ratingDialog?: RatingDialogState;
   helpScroll: number;
+  hiddenPatternsDialog?: { selectedIndex: number; custom: string; patterns: string[] };
 }
 
 export interface ListSnapshot {
@@ -300,6 +301,7 @@ export const settingsItems: ContentItem[] = [
   { title: "切换账号", meta: "account", detail: "选择或管理登录账号" },
   { title: "检查更新", meta: "update", detail: "检查 CC98-CLI 新版本" },
   { title: "缓存管理", meta: "cache", detail: "查看和清理本地缓存" },
+  { title: "一键隐藏", meta: "hidden-patterns", detail: "隐藏纯内容为 cy、bd 或 [ac01] 的帖子" },
   { title: "快捷键帮助", meta: "help", detail: "查看所有可用快捷键" },
   { title: "退出登录", meta: "logout", detail: "清除本地登录信息" }
 ];

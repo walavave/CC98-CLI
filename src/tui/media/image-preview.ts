@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { openSync, readSync, closeSync } from "node:fs";
 import { extname, isAbsolute, join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -33,6 +34,73 @@ const imagePixelSizeCache = new Map<string, ImagePixelSize>();
 let nextImagePreviewId = 1;
 const execFileAsync = promisify(execFile);
 const terminalCellAspectRatio = 0.4;
+
+/** Images larger than this on any side are resized down via ImageMagick. */
+const maxImagePixelDimension = 2000;
+
+/** Kitty protocol chunk size for base64 payload. */
+const kittyChunkSize = 4096;
+
+/** Read PNG dimensions from an in-memory buffer (IHDR at offset 16). */
+function readPngSizeFromBuffer(data: Buffer): ImagePixelSize | undefined {
+  if (data.length < 24 || data.toString("ascii", 1, 4) !== "PNG") {
+    return undefined;
+  }
+  const w = data.readUInt32BE(16);
+  const h = data.readUInt32BE(20);
+  return w > 0 && h > 0 ? { width: w, height: h } : undefined;
+}
+
+/**
+ * Read pixel dimensions of a local image file.
+ *
+ * Fast path — reads the PNG IHDR directly without a subprocess.
+ * Fallback — delegates to `magick identify` for any other format
+ * (JPEG, WebP, AVIF, HEIC, …).
+ */
+async function readImagePixelSize(path: string): Promise<ImagePixelSize | undefined> {
+  const cached = imagePixelSizeCache.get(path);
+  if (cached) {
+    return cached;
+  }
+
+  // Fast path: PNG IHDR.
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, "r");
+    const header = Buffer.alloc(24);
+    const bytesRead = readSync(fd, header, 0, 24, 0);
+    if (bytesRead >= 24 && header.toString("ascii", 1, 4) === "PNG") {
+      const w = header.readUInt32BE(16);
+      const h = header.readUInt32BE(20);
+      if (w > 0 && h > 0) {
+        const result = { width: w, height: h };
+        imagePixelSizeCache.set(path, result);
+        return result;
+      }
+    }
+  } catch {
+    return undefined;
+  } finally {
+    if (fd !== undefined) { try { closeSync(fd); } catch { /* ignore */ } }
+  }
+
+  // Fallback: ImageMagick identify.
+  try {
+    const { stdout } = await execFileAsync("/opt/homebrew/bin/magick", ["identify", "-format", "%w %h", path]);
+    const [ws, hs] = stdout.trim().split(/\s+/);
+    const w = Number.parseInt(ws, 10);
+    const h = Number.parseInt(hs, 10);
+    if (w > 0 && h > 0) {
+      const result = { width: w, height: h };
+      imagePixelSizeCache.set(path, result);
+      return result;
+    }
+  } catch {
+    /* magick unavailable */
+  }
+  return undefined;
+}
 
 export function supportsImagePreview(): boolean {
   return detectImageProtocol() !== undefined;
@@ -88,10 +156,7 @@ async function loadTerminalImage(url: string, size: TerminalImageSize): Promise<
   };
 }
 
-async function resolveTerminalImage(
-  url: string,
-  size: TerminalImageSize
-): Promise<{ data: Buffer; fittedSize: TerminalImageSize } | undefined> {
+async function resolveTerminalImage(url: string, size: TerminalImageSize): Promise<{ data: Buffer; fittedSize: TerminalImageSize } | undefined> {
   if (!isSupportedImageSource(url)) {
     return undefined;
   }
@@ -100,12 +165,62 @@ async function resolveTerminalImage(
   if (!sourcePath) {
     return undefined;
   }
-  const renderPath = await ensureRenderableImage(sourcePath);
+
+  // Determine original pixel dimensions (PNG IHDR or magick identify).
+  const pixelSize = await readImagePixelSize(sourcePath);
+  if (!pixelSize) {
+    // Fallback: convert without knowing size, then read PNG dimensions.
+    const renderPath = await ensureRenderableImage(sourcePath);
+    const data = await readFile(renderPath);
+    // Try reading PNG header from converted data.
+    const fallbackSize = readPngSizeFromBuffer(data);
+    if (!fallbackSize) {
+      return undefined;
+    }
+    const fittedSize = fitTerminalImageSize(fallbackSize, size);
+    return { data, fittedSize };
+  }
+
+  // Calculate how many terminal cells the image will occupy.
+  const fittedSize = fitTerminalImageSize(pixelSize, size);
+
+  // Terminal previews do not need the original full-resolution PNG payload.
+  const resizePixels = computeViewportResizePixelSize(fittedSize);
+  const maxDim = Math.max(pixelSize.width, pixelSize.height);
+  const resizeLimit = resizePixels !== undefined
+    ? Math.min(maxImagePixelDimension, Math.max(resizePixels.width, resizePixels.height))
+    : maxDim > maxImagePixelDimension ? maxImagePixelDimension : undefined;
+
+  // Render as PNG, resized if worthwhile.
+  const renderPath = await ensureRenderableImage(sourcePath, resizeLimit);
   const data = await readFile(renderPath);
-  return {
-    data,
-    fittedSize: fitTerminalImageSize(renderPath, data, size)
-  };
+  return { data, fittedSize };
+}
+
+function computeViewportResizePixelSize(size: TerminalImageSize): ImagePixelSize | undefined {
+  const columns = Math.max(1, Math.floor(size.columns ?? 0));
+  const rows = Math.max(1, Math.floor(size.rows ?? 0));
+  if (!columns || !rows) {
+    return undefined;
+  }
+  // Terminal cell size estimate tuned to keep payload close to visual need.
+  const width = Math.max(64, columns * 14);
+  const height = Math.max(64, rows * 28);
+  return { width, height };
+}
+
+function fitTerminalImageSize(pixelSize: ImagePixelSize, bounds: TerminalImageSize): TerminalImageSize {
+  const maxColumns = Math.max(1, Math.floor(bounds.columns ?? 0) || Number.MAX_SAFE_INTEGER);
+  const maxRows = Math.max(1, Math.floor(bounds.rows ?? 0) || Number.MAX_SAFE_INTEGER);
+  const pixelWidthPerColumn = terminalCellAspectRatio;
+  const widthLimitedRows = Math.max(1, Math.floor((maxColumns * pixelWidthPerColumn * pixelSize.height) / pixelSize.width));
+
+  if (widthLimitedRows <= maxRows) {
+    return { columns: maxColumns, rows: widthLimitedRows };
+  }
+
+  const heightLimitedColumns = Math.max(1, Math.floor((maxRows * pixelSize.width) / (pixelSize.height * pixelWidthPerColumn)));
+  return { columns: Math.min(maxColumns, heightLimitedColumns), rows: maxRows };
 }
 
 function detectImageProtocol(): ImageProtocol | undefined {
@@ -154,63 +269,54 @@ async function resolveImageSource(url: string): Promise<string | undefined> {
   return localPath;
 }
 
-async function ensureRenderableImage(path: string): Promise<string> {
+/**
+ * Ensure a source image is available as PNG, optionally resized.
+ *
+ * When `maxPixelDimension` is set, images larger than that limit on their
+ * longest side are shrunk via ImageMagick in the same pass that converts
+ * non-PNG formats.  The cache key incorporates the dimension so that
+ * different display contexts (inline preview vs. modal viewer) each get
+ * appropriately-sized files.
+ */
+async function ensureRenderableImage(path: string, maxPixelDimension?: number): Promise<string> {
   const extension = extname(path).toLowerCase();
-  if (extension === ".png") {
-    return path;
-  }
+  const cacheKey = createHash("sha256")
+    .update(path + (maxPixelDimension ? `:size${maxPixelDimension}` : ""))
+    .digest("hex");
+  const outPath = join(tmpdir(), "cc98-cli-images", `${cacheKey}.png`);
 
-  const pngPath = join(tmpdir(), "cc98-cli-images", `${createHash("sha256").update(path).digest("hex")}.png`);
+  // Hit the cache first.
   try {
-    await readFile(pngPath);
-    return pngPath;
+    await readFile(outPath);
+    return outPath;
   } catch {
-    await mkdir(join(tmpdir(), "cc98-cli-images"), { recursive: true, mode: 0o700 });
-    const source = extension === ".gif" ? `${path}[0]` : path;
-    await execFileAsync("/opt/homebrew/bin/magick", [source, "-auto-orient", pngPath]);
-    return pngPath;
-  }
-}
-
-function fitTerminalImageSize(path: string, data: Buffer, bounds: TerminalImageSize): TerminalImageSize {
-  const pixelSize = getImagePixelSize(path, data);
-  const maxColumns = Math.max(1, Math.floor(bounds.columns ?? 0) || Number.MAX_SAFE_INTEGER);
-  const maxRows = Math.max(1, Math.floor(bounds.rows ?? 0) || Number.MAX_SAFE_INTEGER);
-  const pixelWidthPerColumn = terminalCellAspectRatio;
-  const widthLimitedRows = Math.max(1, Math.floor((maxColumns * pixelWidthPerColumn * pixelSize.height) / pixelSize.width));
-
-  if (widthLimitedRows <= maxRows) {
-    return {
-      columns: maxColumns,
-      rows: widthLimitedRows
-    };
+    // Cache miss – create the file.
   }
 
-  const heightLimitedColumns = Math.max(1, Math.floor((maxRows * pixelSize.width) / (pixelSize.height * pixelWidthPerColumn)));
-  return {
-    columns: Math.min(maxColumns, heightLimitedColumns),
-    rows: maxRows
-  };
-}
+  await mkdir(join(tmpdir(), "cc98-cli-images"), { recursive: true, mode: 0o700 });
+  const source = extension === ".gif" ? `${path}[0]` : path;
 
-function getImagePixelSize(path: string, data: Buffer): ImagePixelSize {
-  const cached = imagePixelSizeCache.get(path);
-  if (cached) {
-    return cached;
+  const magickArgs = [source, "-auto-orient"];
+  if (maxPixelDimension !== undefined && maxPixelDimension > 0) {
+    // `>` means "only shrink, never enlarge".
+    magickArgs.push("-resize", `${maxPixelDimension}x${maxPixelDimension}>`);
   }
-  if (data.length < 24 || data.toString("ascii", 1, 4) !== "PNG") {
-    throw new Error("failed to read png size");
-  }
+  // Strip metadata AFTER resize so color profiles are available during resize.
+  magickArgs.push("-strip", outPath);
 
-  const width = data.readUInt32BE(16);
-  const height = data.readUInt32BE(20);
-  if (width <= 0 || height <= 0) {
-    throw new Error("failed to read png size");
+  try {
+    await execFileAsync("/opt/homebrew/bin/magick", magickArgs);
+  } catch (firstError) {
+    // Resize may fail for some images (corrupt ICC profile, etc.).
+    // Try without resize as a fallback.
+    if (maxPixelDimension !== undefined && maxPixelDimension > 0) {
+      const fallbackArgs = [source, "-auto-orient", "-strip", outPath];
+      await execFileAsync("/opt/homebrew/bin/magick", fallbackArgs);
+    } else {
+      throw firstError;
+    }
   }
-
-  const size = { width, height };
-  imagePixelSizeCache.set(path, size);
-  return size;
+  return outPath;
 }
 
 function imageCachePath(url: string): string {
@@ -249,16 +355,44 @@ function toLocalImagePath(url: string): string | undefined {
 
 function kittyImage(data: Buffer, size: TerminalImageSize): string {
   const payload = data.toString("base64");
-  const args = ["f=100", "a=T", "t=d"];
   const columns = Math.floor(size.columns ?? 0);
   const rows = Math.floor(size.rows ?? 0);
+
+  // Build the shared argument list (applied only to the first chunk).
+  const staticArgs = ["f=100", "a=T", "t=d"];
   if (columns > 0) {
-    args.push(`c=${columns}`);
+    staticArgs.push(`c=${columns}`);
   }
   if (rows > 0) {
-    args.push(`r=${rows}`);
+    staticArgs.push(`r=${rows}`);
   }
-  return `\x1b_G${args.join(",")};${payload}\x1b\\`;
+
+  // Single-chunk path – identical to original behaviour.
+  if (payload.length <= kittyChunkSize) {
+    return `\x1b_G${staticArgs.join(",")};${payload}\x1b\\`;
+  }
+
+  // Chunked transmission — split the base64 payload.
+  const chunks: string[] = [];
+  for (let pos = 0; pos < payload.length; pos += kittyChunkSize) {
+    chunks.push(payload.slice(pos, pos + kittyChunkSize));
+  }
+
+  let result = "";
+  for (let i = 0; i < chunks.length; i += 1) {
+    const isLast = i === chunks.length - 1;
+    if (i === 0) {
+      // First chunk carries all parameters + m=1 (more to follow).
+      staticArgs.push("m=1");
+      result += `\x1b_G${staticArgs.join(",")};${chunks[i]}\x1b\\`;
+    } else if (isLast) {
+      result += `\x1b_Gm=0;${chunks[i]}\x1b\\`;
+    } else {
+      // Middle chunks: just m=1.
+      result += `\x1b_Gm=1;${chunks[i]}\x1b\\`;
+    }
+  }
+  return result;
 }
 
 function iterm2Image(data: Buffer, size: TerminalImageSize): string {

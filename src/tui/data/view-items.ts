@@ -178,9 +178,12 @@ export function describeUserProfileStatus(state: TuiState): string {
   }
   const action = state.currentUser?.isFollowed ? "a 取关" : "a 关注";
   const messageAction = "s 私信";
+  const blacklistAction = state.currentUser && state.currentUser.title
+    ? "d 拉黑/取消"
+    : "";
   return state.currentUser?.hasMore
-    ? `用户页：${action}  ${messageAction}  n/Space 更多主题  Esc/Backspace 返回`
-    : `用户页：${action}  ${messageAction}  Esc/Backspace 返回`;
+    ? `用户页：${action}  ${messageAction}  ${blacklistAction} `
+    : `用户页：${action}  ${messageAction}  ${blacklistAction} `;
 }
 
 export function unreadStats(value: Record<string, unknown>): ContentItem[] {

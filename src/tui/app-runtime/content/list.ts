@@ -15,6 +15,7 @@ import { openChatImageViewer } from "../image-viewer.js";
 import { handleFollowingContentFocus } from "./following.js";
 import { leaveContentMode } from "../state.js";
 import { handleSearchContentFocus } from "./search.js";
+import { saveBlacklist } from "../../../config.js";
 
 export function handleContentFocus(context: RuntimeContext, key: string, keyAction: string | undefined): void {
   const { state, render, client, nextSignal, abortCurrent, load } = context;
@@ -76,6 +77,22 @@ export function handleContentFocus(context: RuntimeContext, key: string, keyActi
   }
   if (key === "a" && state.currentUser) {
     void toggleCurrentUserFollow(context);
+    return;
+  }
+  if (key === "d" && state.currentUser && state.currentFeed?.kind !== "me-profile") {
+    const name = state.currentUser.title.trim();
+    const index = context.config.blacklist.indexOf(name);
+    const nextBlacklist = index >= 0
+      ? context.config.blacklist.filter((entry) => entry !== name)
+      : [...context.config.blacklist, name];
+    try {
+      saveBlacklist(nextBlacklist);
+      context.config.blacklist = nextBlacklist;
+      state.status = index >= 0 ? `已取消拉黑 ${name}` : `已将 ${name} 加入黑名单`;
+    } catch (error) {
+      state.status = `黑名单保存失败：${error instanceof Error ? error.message : String(error)}`;
+    }
+    render();
     return;
   }
   if (keyAction === "compose.open" && state.currentChat) {

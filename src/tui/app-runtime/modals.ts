@@ -9,6 +9,7 @@ import { getDefaultAccountName, normalizeLoginMessage, refreshAccounts } from ".
 import { getStatus } from "../tui-model.js";
 import type { RuntimeContext } from "./context.js";
 import { showNotification } from "./state.js";
+import { saveHiddenPatterns } from "../../config.js";
 
 interface OpenComposeOptions {
   initialDraft?: string;
@@ -183,6 +184,35 @@ export function handleRatingModal(context: RuntimeContext, key: string): void {
     render();
     return;
   }
+}
+
+export function handleHiddenPatternsModal(context: RuntimeContext, key: string): void {
+  const { state, render, config } = context;
+  const dialog = state.hiddenPatternsDialog;
+  if (!dialog) { state.modal = null; render(); return; }
+  if (key === "j" || key === "\x1b[B") dialog.selectedIndex = Math.min(3, dialog.selectedIndex + 1);
+  else if (key === "k" || key === "\x1b[A") dialog.selectedIndex = Math.max(0, dialog.selectedIndex - 1);
+  else if (key === "\x7f" && dialog.selectedIndex === 3) dialog.custom = dialog.custom.slice(0, -1);
+  else if (key === "\r") {
+    const selected = new Set(dialog.patterns);
+    if (dialog.selectedIndex === 0) selected.has("cy") ? selected.delete("cy") : selected.add("cy");
+    if (dialog.selectedIndex === 1) {
+      selected.has("bd") ? (selected.delete("bd"), selected.delete("bdbd")) : (selected.add("bd"), selected.add("bdbd"));
+    }
+    if (dialog.selectedIndex === 2) selected.has("[ac01]") ? selected.delete("[ac01]") : selected.add("[ac01]");
+    if (dialog.selectedIndex === 3 && dialog.custom.trim()) selected.add(dialog.custom.trim());
+    dialog.patterns = [...selected];
+    try {
+      saveHiddenPatterns(dialog.patterns);
+      config.hiddenPatterns = dialog.patterns;
+      if (dialog.selectedIndex === 3) dialog.custom = "";
+      state.status = "一键隐藏设置已保存";
+    } catch (error) {
+      state.status = `一键隐藏设置保存失败：${error instanceof Error ? error.message : String(error)}`;
+    }
+  } else if (key === "\x1b" || key === "h") { state.modal = null; state.hiddenPatternsDialog = undefined; state.status = getStatus(state); }
+  else if (dialog.selectedIndex === 3 && (isPrintableInput(key) || isPrintableTextInput(key))) dialog.custom += key;
+  render();
 }
 
 export function handleConfirmModal(context: RuntimeContext, key: string): void {

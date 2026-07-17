@@ -118,6 +118,7 @@ hide_top_chrome = false
 preview_images = true
 navigation_history_limit = 10
 clear_cache_on_exit = true
+blacklist = []
 post_signature = "[right][color=#808080]——来自终端应用[/color]「[b][url=https://github.com/walavave/CC98-CLI]CC98 CLI[/url][/b]」[/right]"
 ```
 
@@ -128,6 +129,8 @@ post_signature = "[right][color=#808080]——来自终端应用[/color]「[b][u
 `navigation_history_limit` 控制 TUI 内“帖子 -> 用户 -> 帖子”这类右键深入导航的最大历史层数；超过后会清空这条返回链，后续左键返回会直接回到左侧栏对应主界面。
 
 `clear_cache_on_exit` 控制 TUI 在按 `q` 退出后是否清理缓存，默认开启。
+
+在用户页按 `d` 可以拉黑或取消拉黑当前用户。用户名会记录在 `blacklist` 中，黑名单用户的帖子正文会被隐藏。
 
 #### 可配置快捷键
 

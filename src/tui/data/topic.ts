@@ -400,7 +400,11 @@ function renderPosts(
   let imageCount = 0;
   let linkCount = 0;
 
-  posts.forEach((postRaw) => {
+  posts.filter((postRaw) => {
+    const rawContent = asObject(postRaw).content;
+    const normalized = typeof rawContent === "string" ? rawContent.trim() : "";
+    return !config.hiddenPatterns.includes(normalized);
+  }).forEach((postRaw) => {
     const post = asObject(postRaw);
     const lineStart = lineOffset + lines.length;
     const postLines: TopicLineEntry[] = [];
@@ -408,6 +412,7 @@ function renderPosts(
     const isHot = hotFloors && floorNumber !== undefined && hotFloors.has(floorNumber);
     const floor = floorNumber !== undefined ? `#${floorNumber}` : "#?";
     const author = String(post.userName ?? "匿名");
+    const isBlacklisted = config.blacklist.includes(author);
     const rawTime = typeof post.time === "string" ? post.time.replace("T", " ").slice(0, 19) : "";
     const time = rawTime ? rawTime.slice(0, 16) : "";
     const likeCount = asNumber(post.likeCount) ?? 0;
@@ -432,18 +437,20 @@ function renderPosts(
       });
     };
 
-    push(`${floor} ${author}${time ? ` · ${time}` : ""}${reactions}`, "header", { isHot });
+    push(isBlacklisted ? `${floor} 黑名单用户` : `${floor} ${author}${time ? ` · ${time}` : ""}${reactions}`, "header", { isHot });
     const contentWidth = Math.max(8, width - 2);
     push(theme.border.horizontal.repeat(contentWidth), "divider");
 
-    const content = typeof post.content === "string" ? post.content : "";
+    const content = isBlacklisted ? "此用户为黑名单用户" : typeof post.content === "string" ? post.content : "";
     const contentType = asNumber(post.contentType) ?? 0;
-    if (floorNumber === 1 && vote) {
+    if (!isBlacklisted && floorNumber === 1 && vote) {
       renderVoteSection(vote, push);
       push("", "blank");
     }
 
-    const rendered = contentType === 1
+    const rendered = isBlacklisted
+      ? { lines: [content], images: [], links: [] }
+      : contentType === 1
       ? renderMarkdownToLines(content, contentWidth, {
         imagePreviewRows: config.previewImages ? imagePreviewRows : 0
       })
@@ -480,7 +487,7 @@ function renderPosts(
       });
     });
     const postId = asNumber(post.id);
-    if (rating) {
+    if (rating && !isBlacklisted) {
       push(rating, "rating", { isHot, postId });
     }
     push("", "blank");
@@ -493,11 +500,11 @@ function renderPosts(
       id: asNumber(post.id),
       userId: asNumber(post.userId),
       floor: floorNumber,
-      author,
+      author: isBlacklisted ? "黑名单用户" : author,
       time,
       rawTime,
       rawContent: content,
-      contentType,
+      contentType: isBlacklisted ? 0 : contentType,
       likeCount,
       dislikeCount,
       likeState,

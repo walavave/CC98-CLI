@@ -90,6 +90,12 @@ export function handleSettingsMode(context: RuntimeContext, key: string): void {
     checkUpdate(context);
     return;
   }
+  if (selected?.meta === "hidden-patterns") {
+    state.hiddenPatternsDialog = { selectedIndex: 0, custom: "", patterns: [...context.config.hiddenPatterns] };
+    state.modal = "hidden-patterns";
+    render();
+    return;
+  }
   void load(true);
 }
 
