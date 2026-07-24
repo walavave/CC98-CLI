@@ -13,7 +13,7 @@ export function handleSearchContentFocus(context: RuntimeContext, key: string): 
     return;
   }
 
-  if ((search.focus !== "tabs" && (key === "h" || key === "\x1b[D")) || key === "\x1b") {
+  if ((search.focus === "results" && key === "h") || (search.focus !== "tabs" && key === "\x1b[D") || key === "\x1b") {
     abortCurrent();
     leaveContentMode(state);
     render();
@@ -21,7 +21,7 @@ export function handleSearchContentFocus(context: RuntimeContext, key: string): 
   }
 
   if (search.focus === "input") {
-    if (key === "k" || key === "\x1b[A") {
+    if (key === "\x1b[A") {
       search.focus = "tabs";
       render();
       return;
@@ -35,14 +35,9 @@ export function handleSearchContentFocus(context: RuntimeContext, key: string): 
       void executeSearch(client, state, render, false, nextSignal());
       return;
     }
-    if ((key === "j" || key === "\x1b[B" || key === "\t") && state.items.length > 0) {
+    if ((key === "\x1b[B" || key === "\t") && state.items.length > 0) {
       search.focus = "results";
       render();
-      return;
-    }
-    if (key === "r" && search.query) {
-      search.draft = search.query;
-      void executeSearch(client, state, render, true, nextSignal());
       return;
     }
     if (isPrintableInput(key) || isPrintableTextInput(key)) {

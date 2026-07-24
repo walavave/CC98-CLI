@@ -91,14 +91,14 @@ export function createKeyHandler(context: RuntimeContext): (key: string) => void
       return;
     }
 
-    if (key === "?") {
+    if (key === "?" && !isTextEntryActive(state)) {
       state.modal = "help";
       state.helpScroll = 0;
       render();
       return;
     }
 
-    if (keyAction === "search.focus-input") {
+    if (keyAction === "search.focus-input" && !isTextEntryActive(state)) {
       void focusSearchInput(context);
       return;
     }
