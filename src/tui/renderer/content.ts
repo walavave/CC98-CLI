@@ -38,14 +38,15 @@ export function getRenderedListItemIndexAtRow(
   height: number,
   rowIndex: number
 ): number | undefined {
-  const contentRow = rowIndex - 2;
+  const headerRows = state.currentBoardDirectory ? 3 : 2;
+  const contentRow = rowIndex - headerRows;
   if (contentRow < 0) {
     return undefined;
   }
 
   const wrapDetail = shouldWrapListDetail(state);
   const inlineDetail = shouldInlineListDetail(state);
-  const contentHeight = Math.max(1, height - 2);
+  const contentHeight = Math.max(1, height - headerRows);
   const scroll = getListScroll(state, contentHeight, width, wrapDetail, inlineDetail);
   let usedRows = 0;
 
@@ -108,6 +109,10 @@ export function drawMain(state: TuiState, width: number, height: number, config:
 
   if (state.currentSearch) {
     return drawSearch(state, width, height);
+  }
+
+  if (state.currentBoardDirectory) {
+    return drawBoardDirectory(state, width, height);
   }
 
   if (state.loading) {
@@ -196,6 +201,56 @@ export function drawMain(state: TuiState, width: number, height: number, config:
   }
 
   return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays };
+}
+
+function drawBoardDirectory(state: TuiState, width: number, height: number): TopicDrawResult {
+  const directory = state.currentBoardDirectory;
+  if (!directory) return { rows: blank(height, width), imageOverlays: [] };
+
+  const rows = [textStyle.primaryBold(` ${state.viewTitle}`)];
+  const active = directory.sectionIndex;
+  const tabs = visibleBoardSectionIndexes(directory, width)
+    .map((index) => drawSearchTab(directory.sections[index]?.title ?? "", index === active));
+  rows.push(fit(` ${tabs.join(" ")}`, width));
+  rows.push(ruleLine(Math.max(0, width - 1)));
+
+  const contentHeight = Math.max(1, height - 3);
+  const scroll = getListScroll(state, contentHeight, width, false, true);
+  const visible = getVisibleItems(state.items, scroll, contentHeight, width, false, true);
+  for (const { item, index } of visible) {
+    const isActive = index === state.itemIndex && state.focus === "content" && directory.focus === "results";
+    const marker = isActive ? theme.marker.selected : theme.marker.normal;
+    const title = fit(` ${marker} ${renderListItemTitle(item, true)}`, width);
+    rows.push(isActive ? selectedLine(title, width, true) : textStyle.muted(title));
+    if (item.meta) rows.push(fit(textStyle.muted(`  ${item.meta}`), width));
+  }
+  if (visible.length === 0) rows.push(textStyle.muted(" 暂无版面"));
+  const lastVisibleIndex = visible.at(-1)?.index ?? scroll - 1;
+  if (lastVisibleIndex < state.items.length - 1 && rows.length < height) {
+    rows.push(fit(textStyle.muted(`  ↓ 还有 ${state.items.length - lastVisibleIndex - 1} 项`), width));
+  }
+  return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
+}
+
+export function visibleBoardSectionIndexes(
+  directory: NonNullable<TuiState["currentBoardDirectory"]>,
+  width: number
+): number[] {
+  if (directory.sections.length === 0) return [];
+  const tabWidth = (index: number) => cellWidth(`[${directory.sections[index]?.title ?? ""}]`) + 1;
+  const available = Math.max(1, width - 1);
+  let start = Math.min(directory.sectionIndex, directory.sections.length - 1);
+  let end = start;
+  let used = tabWidth(start);
+  while (start > 0 && used + tabWidth(start - 1) <= available) {
+    start -= 1;
+    used += tabWidth(start);
+  }
+  while (end + 1 < directory.sections.length && used + tabWidth(end + 1) <= available) {
+    end += 1;
+    used += tabWidth(end);
+  }
+  return Array.from({ length: end - start + 1 }, (_, offset) => start + offset);
 }
 
 export function drawStatusBar(state: TuiState, width: number): string {

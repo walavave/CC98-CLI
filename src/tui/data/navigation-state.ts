@@ -84,6 +84,7 @@ export function prepareListView(
   state.currentUser = options.currentUser;
   state.currentSearch = undefined;
   state.currentFollowing = undefined;
+  state.currentBoardDirectory = undefined;
   state.viewTitle = options.title;
   state.items = [];
   state.status = options.status;
@@ -122,6 +123,7 @@ function snapshotCurrentList(state: TuiState): ListSnapshot {
     currentChat: state.currentChat,
     currentSearch: state.currentSearch,
     currentFollowing: state.currentFollowing,
+    currentBoardDirectory: state.currentBoardDirectory,
     currentUser: state.currentUser
   };
 }
@@ -140,6 +142,7 @@ function applyListSnapshot(state: TuiState, snapshot: ListSnapshot): void {
   state.currentChat = snapshot.currentChat;
   state.currentSearch = snapshot.currentSearch;
   state.currentFollowing = snapshot.currentFollowing;
+  state.currentBoardDirectory = snapshot.currentBoardDirectory;
   state.currentUser = snapshot.currentUser;
   state.viewTitle = snapshot.title;
   state.items = snapshot.items;
@@ -176,6 +179,7 @@ function applyTopicSnapshot(
   state.currentUser = snapshot.list.currentUser;
   state.currentSearch = snapshot.list.currentSearch;
   state.currentFollowing = snapshot.list.currentFollowing;
+  state.currentBoardDirectory = snapshot.list.currentBoardDirectory;
   state.viewTitle = snapshot.viewTitle;
   state.status = snapshot.status;
 }

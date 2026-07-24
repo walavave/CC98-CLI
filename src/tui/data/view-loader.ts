@@ -6,7 +6,7 @@ import { initialSearchStatus } from "./search.js";
 import { asArray, asObject } from "./utils.js";
 import {
   chatItem,
-  flattenBoards,
+  groupBoards,
   hasUnreadChatItem,
   loadChatUnreadCounts,
   loadChatUserNames,
@@ -27,6 +27,7 @@ export async function loadView(
   status?: string;
   feed?: FeedListState;
   following?: FollowingListState;
+  boardDirectory?: import("../tui-model.js").BoardDirectoryState;
 }> {
   switch (view) {
     case "hot": {
@@ -71,11 +72,12 @@ export async function loadView(
       };
     case "boards": {
       const sections = asArray(await client.getAllBoards(force, signal));
-      const allBoards = flattenBoards(sections);
+      const groups = groupBoards(sections);
       return {
         title: "版面",
-        items: allBoards.slice(0, 14),
-        status: "版面：j/k 选择  l 进入版面  h 返回  r 刷新"
+        items: groups[0]?.items ?? [],
+        boardDirectory: { sections: groups, sectionIndex: 0, focus: "tabs" },
+        status: "版面：左右切换分类  下键进入列表  r 刷新"
       };
     }
     case "following": {

@@ -8,10 +8,10 @@ import {
   navItems,
   type TuiState
 } from "./tui-model.js";
-import { getSidebarWidth, getRenderedListItemIndexAtRow, getRenderedSearchItemIndexAtRow, drawMain, drawStatusBar } from "./renderer/content.js";
+import { getSidebarWidth, getRenderedListItemIndexAtRow, getRenderedSearchItemIndexAtRow, visibleBoardSectionIndexes, drawMain, drawStatusBar } from "./renderer/content.js";
 import { drawModalFrame } from "./renderer/modals.js";
 
-export { getSidebarWidth, getRenderedListItemIndexAtRow, getRenderedSearchItemIndexAtRow };
+export { getSidebarWidth, getRenderedListItemIndexAtRow, getRenderedSearchItemIndexAtRow, visibleBoardSectionIndexes };
 
 export function draw(state: TuiState, size: { columns: number; rows: number }, config: TuiConfig): TerminalFrame {
   const width = Math.max(1, size.columns);

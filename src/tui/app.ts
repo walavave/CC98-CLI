@@ -62,6 +62,7 @@ export async function runTui(): Promise<void> {
     currentUser: undefined,
     currentSearch: undefined,
     currentFollowing: undefined,
+    currentBoardDirectory: undefined,
     modal: null,
     accountModal: {
       accounts: [],
@@ -117,6 +118,7 @@ export async function runTui(): Promise<void> {
         state.currentUser = undefined;
         state.currentSearch = nav.id === "search" ? createSearchState() : undefined;
         state.currentFollowing = undefined;
+        state.currentBoardDirectory = undefined;
         render();
 
         try {
@@ -145,6 +147,7 @@ export async function runTui(): Promise<void> {
           }
           state.currentFeed = next.feed;
           state.currentFollowing = next.following;
+          state.currentBoardDirectory = next.boardDirectory;
           state.status = next.status ?? getStatus(state);
         } catch (error) {
           if (error instanceof Error && error.name === "AbortError") {

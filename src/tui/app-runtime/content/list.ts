@@ -19,6 +19,10 @@ import { saveBlacklist } from "../../../config.js";
 
 export function handleContentFocus(context: RuntimeContext, key: string, keyAction: string | undefined): void {
   const { state, render, client, nextSignal, abortCurrent, load } = context;
+  if (state.currentBoardDirectory) {
+    handleBoardDirectoryFocus(context, key);
+    return;
+  }
   if (state.currentFollowing) {
     handleFollowingContentFocus(context, key);
     return;
@@ -132,6 +136,67 @@ export function handleContentFocus(context: RuntimeContext, key: string, keyActi
       return;
     }
     void load(true);
+  }
+}
+
+function handleBoardDirectoryFocus(context: RuntimeContext, key: string): void {
+  const { state, render, abortCurrent } = context;
+  const directory = state.currentBoardDirectory;
+  if (!directory) return;
+
+  if (key === "r") {
+    void context.load(true);
+    return;
+  }
+
+  if (directory.focus === "tabs") {
+    if (key === "h" || key === "\x1b[D" || key === "l" || key === "\x1b[C") {
+      const offset = key === "h" || key === "\x1b[D" ? -1 : 1;
+      const count = directory.sections.length;
+      if (count > 0) {
+        directory.sectionIndex = (directory.sectionIndex + offset + count) % count;
+        state.items = directory.sections[directory.sectionIndex]?.items ?? [];
+        state.itemIndex = 0;
+        state.scroll = 0;
+      }
+      render();
+      return;
+    }
+    if (key === "j" || key === "\x1b[B" || key === "\t" || key === "\r") {
+      directory.focus = "results";
+      render();
+      return;
+    }
+    if (key === "\x1b") {
+      abortCurrent();
+      leaveContentMode(state);
+      render();
+    }
+    return;
+  }
+
+  if (key === "k" || key === "\x1b[A") {
+    if (state.itemIndex === 0) directory.focus = "tabs";
+    else state.itemIndex -= 1;
+    render();
+    return;
+  }
+  if (key === "j" || key === "\x1b[B") {
+    state.itemIndex = Math.min(Math.max(0, state.items.length - 1), state.itemIndex + 1);
+    render();
+    return;
+  }
+  if (key === "h" || key === "\x1b[D" || key === "\x1b") {
+    abortCurrent();
+    leaveContentMode(state);
+    render();
+    return;
+  }
+  if (key === "l" || key === "\x1b[C" || key === "\r") {
+    if (!openSelectedItem(context)) {
+      state.status = "当前条目不可进入";
+      render();
+    }
   }
 }
 

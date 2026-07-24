@@ -74,6 +74,7 @@ export interface TuiState {
   currentChat?: ChatListState;
   currentSearch?: SearchListState;
   currentFollowing?: FollowingListState;
+  currentBoardDirectory?: BoardDirectoryState;
   currentUser?: UserProfileListState;
   topic?: TopicReaderState;
   modal: ModalType;
@@ -98,6 +99,7 @@ export interface ListSnapshot {
   currentChat?: ChatListState;
   currentSearch?: SearchListState;
   currentFollowing?: FollowingListState;
+  currentBoardDirectory?: BoardDirectoryState;
   currentUser?: UserProfileListState;
 }
 
@@ -155,6 +157,17 @@ export interface FollowingListState {
   size: number;
   hasMore: boolean;
   focus: FollowingFocus;
+}
+
+export interface BoardDirectorySection {
+  title: string;
+  items: ContentItem[];
+}
+
+export interface BoardDirectoryState {
+  sections: BoardDirectorySection[];
+  sectionIndex: number;
+  focus: "tabs" | "results";
 }
 
 export interface UserProfileListState {

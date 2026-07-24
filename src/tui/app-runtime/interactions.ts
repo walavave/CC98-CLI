@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { downloadUrlToDownloads } from "../media/downloads.js";
 import { extractFirstHttpUrl, isDownloadLikeUrl, parseCc98TopicLink, shortUrl } from "../link.js";
 import { fill, length, pad, rect, split } from "../render-core/layout.js";
-import { getRenderedListItemIndexAtRow, getRenderedSearchItemIndexAtRow, getSidebarWidth } from "../renderer.js";
+import { getRenderedListItemIndexAtRow, getRenderedSearchItemIndexAtRow, getSidebarWidth, visibleBoardSectionIndexes } from "../renderer.js";
 import { cellWidth } from "../render-core/text.js";
 import { getStatus, navItems, settingsItems, type TopicLineEntry } from "../tui-model.js";
 import { getRenderedTopicVisibleScroll } from "../topic-scroll.js";
@@ -269,6 +269,35 @@ export function handleContentClick(
     return true;
   }
 
+  if (state.currentBoardDirectory) {
+    const rowIndex = event.row - (mainArea.y + 1);
+    if (rowIndex === 1) {
+      const sectionIndex = getBoardSectionAtColumn(
+        state.currentBoardDirectory,
+        event.column - (mainArea.x + 1),
+        mainArea.width
+      );
+      if (sectionIndex !== undefined) {
+        state.currentBoardDirectory.sectionIndex = sectionIndex;
+        state.currentBoardDirectory.focus = "tabs";
+        state.items = state.currentBoardDirectory.sections[sectionIndex]?.items ?? [];
+        state.itemIndex = 0;
+        state.scroll = 0;
+        enterContentMode(state);
+        render();
+      }
+      return true;
+    }
+    if (rowIndex < 3) return true;
+    const itemIndex = getRenderedListItemIndexAtRow(state, mainArea.width, mainArea.height, rowIndex);
+    if (itemIndex === undefined) return true;
+    state.itemIndex = itemIndex;
+    state.currentBoardDirectory.focus = "results";
+    enterContentMode(state);
+    render();
+    return true;
+  }
+
   const rowIndex = event.row - (mainArea.y + 1) - 2;
   if (rowIndex < 0) {
     return true;
@@ -390,6 +419,20 @@ function getFollowingKindAtColumn(
     if (zeroBasedColumn >= cursor && zeroBasedColumn < end) {
       return tab.kind;
     }
+    cursor = end + 1;
+  }
+  return undefined;
+}
+
+function getBoardSectionAtColumn(
+  directory: NonNullable<RuntimeContext["state"]["currentBoardDirectory"]>,
+  zeroBasedColumn: number,
+  width: number
+): number | undefined {
+  let cursor = 1;
+  for (const index of visibleBoardSectionIndexes(directory, width)) {
+    const end = cursor + cellWidth(`[${directory.sections[index]?.title ?? ""}]`);
+    if (zeroBasedColumn >= cursor && zeroBasedColumn < end) return index;
     cursor = end + 1;
   }
   return undefined;

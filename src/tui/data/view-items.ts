@@ -295,28 +295,34 @@ export async function mapLimit<T, R>(values: T[], limit: number, mapper: (value:
   return results;
 }
 
-export function flattenBoards(sections: unknown[]): ContentItem[] {
-  const boards: ContentItem[] = [];
+export function groupBoards(sections: unknown[]): Array<{ title: string; items: ContentItem[] }> {
+  const groups: Array<{ title: string; items: ContentItem[] }> = [];
   for (const section of sections) {
     const sectionObject = asObject(section);
-    const sectionName = String(sectionObject.name ?? sectionObject.title ?? "分区");
+    const sectionName = normalizeInlineText(String(sectionObject.name ?? sectionObject.title ?? "分区"));
     const candidates = [sectionObject.boards, sectionObject.children, sectionObject.boardList];
-    for (const candidate of candidates) {
-      if (!Array.isArray(candidate)) {
-        continue;
-      }
-      for (const board of candidate) {
-        const boardObject = asObject(board);
-        boards.push({
-          title: String(boardObject.name ?? boardObject.title ?? `#${boardObject.id ?? ""}`),
-          meta: `${sectionName}${boardObject.id !== undefined ? ` · #${boardObject.id}` : ""}`,
-          detail: typeof boardObject.description === "string" ? boardObject.description : undefined,
-          boardId: typeof boardObject.id === "number" ? boardObject.id : undefined
-        });
-      }
+    const candidate = candidates.find((value) => Array.isArray(value) && value.length > 0);
+    if (!Array.isArray(candidate)) {
+      continue;
+    }
+    const items = candidate.map((board) => {
+      const boardObject = asObject(board);
+      return {
+        title: normalizeInlineText(String(boardObject.name ?? boardObject.title ?? `#${boardObject.id ?? ""}`)),
+        meta: boardObject.id !== undefined ? `#${boardObject.id}` : undefined,
+        detail: typeof boardObject.description === "string" ? normalizePreview(boardObject.description) : undefined,
+        boardId: typeof boardObject.id === "number" ? boardObject.id : undefined
+      };
+    });
+    if (items.length > 0) {
+      groups.push({ title: sectionName, items });
     }
   }
-  return boards;
+  return groups;
+}
+
+export function flattenBoards(sections: unknown[]): ContentItem[] {
+  return groupBoards(sections).flatMap((group) => group.items);
 }
 
 export async function loadFeedPageItems(
