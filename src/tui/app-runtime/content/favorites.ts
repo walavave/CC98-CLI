@@ -17,10 +17,23 @@ export function handleFavoriteContentFocus(context: RuntimeContext, key: string)
     return;
   }
 
-  if ((favorites.focus !== "tabs" && (key === "h" || key === "\x1b[D")) || key === "\x1b") {
+  // 返回：h / Esc（任何焦点）；results 下 ← 也返回（与版面目录一致）
+  if (key === "h" || key === "\x1b" || (favorites.focus === "results" && key === "\x1b[D")) {
     abortCurrent();
     leaveContentMode(state);
     render();
+    return;
+  }
+
+  // 切换分组：tabs 下 ←/→；results 下仅 →（← 已在上方作为返回处理）
+  if (key === "\x1b[D" || key === "\x1b[C") {
+    abortCurrent();
+    const nextGroupId = adjacentFavoriteGroup(state, key === "\x1b[D" ? -1 : 1);
+    if (switchFavoriteGroup(state, nextGroupId)) {
+      void loadFavoriteView(client, state, render, false, nextSignal());
+    } else {
+      render();
+    }
     return;
   }
 
@@ -30,21 +43,11 @@ export function handleFavoriteContentFocus(context: RuntimeContext, key: string)
   }
 
   if (favorites.focus === "tabs") {
-    if (key === "j" || key === "\x1b[B" || key === "\t" || key === "\r") {
+    if (key === "j" || key === "\x1b[B" || key === "\t" || key === "\r" || key === "l") {
       if (favorites.groupId === -1) {
         startCreateFavoriteGroup(context);
       } else if (state.items.length > 0) {
         favorites.focus = "results";
-        render();
-      }
-      return;
-    }
-    if (key === "h" || key === "\x1b[D" || key === "l" || key === "\x1b[C") {
-      abortCurrent();
-      const nextGroupId = adjacentFavoriteGroup(state, key === "h" || key === "\x1b[D" ? -1 : 1);
-      if (switchFavoriteGroup(state, nextGroupId)) {
-        void loadFavoriteView(client, state, render, false, nextSignal());
-      } else {
         render();
       }
       return;
@@ -74,7 +77,7 @@ export function handleFavoriteContentFocus(context: RuntimeContext, key: string)
     render();
     return;
   }
-  if (key === "l" || key === "\x1b[C" || key === "\r") {
+  if (key === "l" || key === "\r") {
     if (openFavoriteSelectedItem(context)) {
       return;
     }

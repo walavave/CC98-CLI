@@ -79,6 +79,44 @@ export function handleLoginModal(context: RuntimeContext, key: string): void {
   if (state.loginForm.submitting) {
     return;
   }
+  const editingField = state.loginForm.fieldIndex < 2;
+
+  // 输入字段中：字母键全部作为输入字符，仅保留 Tab/方向键/退格/Esc/Enter
+  if (editingField) {
+    if (key === "\t" || key === "\x1b[B" || key === "\x1b[C") {
+      state.loginForm.fieldIndex = (state.loginForm.fieldIndex + 1) % 3;
+      render();
+      return;
+    }
+    if (key === "\x1b[A") {
+      state.loginForm.fieldIndex = (state.loginForm.fieldIndex + 2) % 3;
+      render();
+      return;
+    }
+    if (key === "\x1b" || key === "\x1b[D") {
+      state.modal = "account";
+      state.loginForm.error = undefined;
+      state.status = getStatus(state);
+      render();
+      return;
+    }
+    if (key === "\x7f") {
+      updateLoginField(state.loginForm, (value) => value.slice(0, -1));
+      render();
+      return;
+    }
+    if (key === "\r") {
+      state.loginForm.fieldIndex += 1;
+      render();
+      return;
+    }
+    if (isPrintableInput(key) || isPrintableTextInput(key)) {
+      updateLoginField(state.loginForm, (value) => `${value}${key}`);
+      render();
+    }
+    return;
+  }
+
   if (key === "\t" || key === "j" || key === "\x1b[B") {
     state.loginForm.fieldIndex = (state.loginForm.fieldIndex + 1) % 3;
     render();
@@ -97,24 +135,11 @@ export function handleLoginModal(context: RuntimeContext, key: string): void {
     return;
   }
   if (key === "l" || key === "\x1b[C") {
-    if (state.loginForm.fieldIndex < 2) {
-      state.loginForm.fieldIndex += 1;
-      render();
-    }
-    return;
-  }
-  if (key === "\x7f") {
-    updateLoginField(state.loginForm, (value) => value.slice(0, -1));
+    state.loginForm.fieldIndex = 0;
     render();
     return;
   }
   if (key === "\r") {
-    if (state.loginForm.fieldIndex < 2) {
-      state.loginForm.fieldIndex += 1;
-      render();
-      return;
-    }
-
     const username = state.loginForm.username.trim();
     const password = state.loginForm.password;
     if (!username || !password) {

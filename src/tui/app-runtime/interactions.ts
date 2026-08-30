@@ -9,6 +9,7 @@ import { getRenderedTopicVisibleScroll } from "../topic-scroll.js";
 import type { MouseEvent } from "../render-core/terminal.js";
 import type { RuntimeContext } from "./context.js";
 import { jumpToTopicFloor, openTopic } from "../data/topic.js";
+import { loadFavoriteView, switchFavoriteGroup } from "../data/favorites.js";
 import { loadFollowingKind, switchFollowingKind } from "../data/following.js";
 import { switchSearchKind } from "../data/search.js";
 import { enterContentMode, showNotification } from "./state.js";
@@ -269,6 +270,36 @@ export function handleContentClick(
     return true;
   }
 
+  if (state.currentFavorites) {
+    const rowIndex = event.row - (mainArea.y + 1);
+    if (rowIndex === 0) {
+      const groupId = getFavoriteGroupAtColumn(state.currentFavorites, event.column - (mainArea.x + 1));
+      if (groupId !== undefined) {
+        if (switchFavoriteGroup(state, groupId)) {
+          render();
+          void loadFavoriteView(context.client, state, render, false, context.nextSignal());
+        } else {
+          state.currentFavorites.focus = "tabs";
+          enterContentMode(state);
+          render();
+        }
+      }
+      return true;
+    }
+    if (rowIndex < 2) {
+      return true;
+    }
+    const itemIndex = getRenderedListItemIndexAtRow(state, mainArea.width, mainArea.height, rowIndex);
+    if (itemIndex === undefined) {
+      return true;
+    }
+    state.itemIndex = itemIndex;
+    state.currentFavorites.focus = "results";
+    enterContentMode(state);
+    render();
+    return true;
+  }
+
   if (state.currentBoardDirectory) {
     const rowIndex = event.row - (mainArea.y + 1);
     if (rowIndex === 1) {
@@ -395,6 +426,35 @@ function getSearchKindAtColumn(
     cursor = end + 1;
   }
 
+  return undefined;
+}
+
+function getFavoriteGroupAtColumn(
+  favorites: NonNullable<RuntimeContext["state"]["currentFavorites"]>,
+  zeroBasedColumn: number
+): number | undefined {
+  // 与 renderer/content.ts 的 favoriteTabs 保持一致
+  const defaultGroup = favorites.groups.find((group) => group.id === 0);
+  const tabs = [
+    { label: defaultGroup?.name ?? "默认分组", groupId: 0 },
+    ...favorites.groups
+      .filter((group) => group.id !== 0)
+      .map((group) => ({ label: group.name, groupId: group.id })),
+    { label: "+", groupId: -1 }
+  ];
+  const start = cellWidth(` ${favorites.title} `);
+  if (zeroBasedColumn < start) {
+    return undefined;
+  }
+
+  let cursor = start;
+  for (const tab of tabs) {
+    const end = cursor + cellWidth(`[${tab.label}]`);
+    if (zeroBasedColumn >= cursor && zeroBasedColumn < end) {
+      return tab.groupId;
+    }
+    cursor = end + 1;
+  }
   return undefined;
 }
 

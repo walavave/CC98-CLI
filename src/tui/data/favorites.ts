@@ -141,7 +141,12 @@ export function adjacentFavoriteGroup(state: TuiState, offset: number): number {
   if (!favorites) {
     return 0;
   }
-  const tabs = [0, ...favorites.groups.map((group) => group.id), -1];
+  // 与渲染层 favoriteTabs 一致：默认分组固定放第一个，过滤掉 API 返回的 id 0 重复项
+  const tabs = [
+    0,
+    ...favorites.groups.filter((group) => group.id !== 0).map((group) => group.id),
+    -1
+  ];
   const currentIndex = Math.max(0, tabs.indexOf(favorites.groupId));
   return tabs[(currentIndex + offset + tabs.length) % tabs.length] ?? 0;
 }

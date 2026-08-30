@@ -199,11 +199,19 @@ export class WebVpnService {
       if (location) {
         this.updateCookies(response);
         const nextUrl = new URL(location, response.url || targetUrl).toString();
+        // 仅当非登录页请求被重定向到登录页时，才判定会话过期；
+        // 主动请求 /login（如 vpn login 获取 CSRF）不算。
+        if (!isLoginPageUrl(url) && isLoginPageUrl(nextUrl)) {
+          throw new Error("WebVPN 会话已过期，请运行 \"cc98 vpn login\" 重新登录");
+        }
         return this.fetchWithRedirects(nextUrl, redirectOptions(options, response.status), redirectCount + 1);
       }
     }
 
     this.updateCookies(response);
+    if (!isLoginPageUrl(url) && isLoginPageUrl(response.url || targetUrl) && isHtmlResponse(response)) {
+      throw new Error("WebVPN 会话已过期，请运行 \"cc98 vpn login\" 重新登录");
+    }
     return response;
   }
 
@@ -287,6 +295,19 @@ export class WebVpnService {
     const sliceLength = 2 * plaintext.length;
     return prefixHex + fullEncrypted.slice(0, Math.min(fullEncrypted.length, sliceLength));
   }
+}
+
+function isLoginPageUrl(url: string): boolean {
+  try {
+    const path = new URL(url).pathname;
+    return /\/login(\/|$)/.test(path) || /\/auth\/login/.test(path);
+  } catch {
+    return false;
+  }
+}
+
+function isHtmlResponse(response: Response): boolean {
+  return (response.headers.get("content-type") ?? "").includes("text/html");
 }
 
 function splitSetCookieHeader(value: string | null): string[] {
