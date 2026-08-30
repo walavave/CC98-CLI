@@ -62,8 +62,11 @@ export async function runTui(): Promise<void> {
     currentUser: undefined,
     currentSearch: undefined,
     currentFollowing: undefined,
+    currentFavorites: undefined,
     currentBoardDirectory: undefined,
     modal: null,
+    menuDialog: undefined,
+    inputDialog: undefined,
     accountModal: {
       accounts: [],
       selectedIndex: 0
@@ -118,6 +121,7 @@ export async function runTui(): Promise<void> {
         state.currentUser = undefined;
         state.currentSearch = nav.id === "search" ? createSearchState() : undefined;
         state.currentFollowing = undefined;
+        state.currentFavorites = undefined;
         state.currentBoardDirectory = undefined;
         render();
 

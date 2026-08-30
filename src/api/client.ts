@@ -218,14 +218,52 @@ export class Cc98Client {
     return this.request<unknown>(endpoints.topic.isFavorite(topicId));
   }
 
-  async favoriteTopic(topicId: number): Promise<unknown> {
-    return this.request<unknown>(endpoints.write.addFavorite(topicId), {
+  async favoriteTopic(topicId: number, groupId = 0): Promise<unknown> {
+    return this.request<unknown>(endpoints.write.addFavorite(topicId, groupId), {
       method: "PUT"
     });
   }
 
   async unfavoriteTopic(topicId: number): Promise<unknown> {
     return this.request<unknown>(endpoints.write.removeFavorite(topicId), {
+      method: "DELETE"
+    });
+  }
+
+  async createFavoriteGroup(name: string): Promise<unknown> {
+    return this.request<unknown>(endpoints.write.createFavoriteGroup, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ name })
+    });
+  }
+
+  async updateFavoriteGroup(groupId: number, name: string): Promise<unknown> {
+    return this.request<unknown>(endpoints.write.updateFavoriteGroup, {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ id: groupId, name })
+    });
+  }
+
+  async deleteFavoriteGroup(groupId: number): Promise<unknown> {
+    return this.request<unknown>(endpoints.write.deleteFavoriteGroup(groupId), {
+      method: "DELETE"
+    });
+  }
+
+  async addBoardFavorite(boardId: number): Promise<unknown> {
+    return this.request<unknown>(endpoints.write.addBoardFavorite(boardId), {
+      method: "PUT"
+    });
+  }
+
+  async removeBoardFavorite(boardId: number): Promise<unknown> {
+    return this.request<unknown>(endpoints.write.removeBoardFavorite(boardId), {
       method: "DELETE"
     });
   }

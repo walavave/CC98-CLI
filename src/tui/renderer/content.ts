@@ -107,6 +107,10 @@ export function drawMain(state: TuiState, width: number, height: number, config:
     return drawFollowing(state, width, height);
   }
 
+  if (state.currentFavorites) {
+    return drawFavorites(state, width, height);
+  }
+
   if (state.currentSearch) {
     return drawSearch(state, width, height);
   }
@@ -376,6 +380,59 @@ function drawFollowing(state: TuiState, width: number, height: number): TopicDra
   return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
 }
 
+function drawFavorites(state: TuiState, width: number, height: number): TopicDrawResult {
+  const favorites = state.currentFavorites;
+  if (!favorites) {
+    return { rows: blank(height, width), imageOverlays: [] };
+  }
+
+  const rows: string[] = [];
+  rows.push(drawFavoritesHeader(state.viewTitle, favorites, width));
+  rows.push(ruleLine(Math.max(0, width - 1)));
+
+  if (state.loading) {
+    rows.push(fit(textStyle.muted(" 正在读取我的收藏..."), width));
+    return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
+  }
+
+  if (favorites.groupId === -1) {
+    rows.push(fit(textStyle.muted(" 新建分组：Enter 确认  Tab 返回分组列表"), width));
+    return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
+  }
+
+  const contentHeight = Math.max(1, height - 2);
+  const scroll = getListScroll(state, contentHeight, width, false, true);
+  const visible = getVisibleItems(state.items, scroll, contentHeight, width, false, true);
+
+  if (visible.length === 0) {
+    rows.push(textStyle.muted(" 暂无收藏内容"));
+    return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
+  }
+
+  visible.forEach(({ item: itemValue, index }) => {
+    const itemHeight = getListItemHeight(itemValue, width, false, true);
+    if (rows.length + itemHeight > height) {
+      return;
+    }
+    const active = index === state.itemIndex && state.focus === "content" && favorites.focus === "results";
+    const marker = active ? theme.marker.selected : theme.marker.normal;
+    const title = fit(` ${marker} ${renderListItemTitle(itemValue, true)}`, width);
+    rows.push(active ? selectedLine(title, width, true) : textStyle.muted(title));
+    if (itemValue.meta) {
+      rows.push(fit(textStyle.muted(`  ${itemValue.meta}`), width));
+    }
+  });
+
+  const lastVisibleIndex = visible.at(-1)?.index ?? scroll - 1;
+  if (lastVisibleIndex < state.items.length - 1 && rows.length < height) {
+    rows.push(fit(textStyle.muted(`  ↓ 还有 ${state.items.length - lastVisibleIndex - 1} 项`), width));
+  } else if (favorites.hasMore && rows.length < height) {
+    rows.push(fit(textStyle.muted("  ↓ 到底自动继续加载，或按 n/Space"), width));
+  }
+
+  return { rows: rows.concat(blank(height - rows.length, width)).slice(0, height), imageOverlays: [] };
+}
+
 function drawTopic(state: TuiState, width: number, height: number, config: TuiConfig): TopicDrawResult {
   if (state.loading && (!state.topic || state.topic.lines.length === 0)) {
     return { rows: [
@@ -614,6 +671,23 @@ function drawFollowingHeader(title: string, following: NonNullable<TuiState["cur
   return fit(`${textStyle.primaryBold(titleText)} ${tabs.join(" ")}`, width);
 }
 
+function drawFavoritesHeader(title: string, favorites: NonNullable<TuiState["currentFavorites"]>, width: number): string {
+  const titleText = ` ${title}`;
+  const tabs = favoriteTabs(favorites).map((tab) => drawSearchTab(tab.label, tab.groupId === favorites.groupId));
+  return fit(`${textStyle.primaryBold(titleText)} ${tabs.join(" ")}`, width);
+}
+
+function favoriteTabs(favorites: NonNullable<TuiState["currentFavorites"]>): Array<{ label: string; groupId: number }> {
+  const defaultGroup = favorites.groups.find((group) => group.id === 0);
+  return [
+    { label: defaultGroup?.name ?? "默认分组", groupId: 0 },
+    ...favorites.groups
+      .filter((group) => group.id !== 0)
+      .map((group) => ({ label: group.name, groupId: group.id })),
+    { label: "+", groupId: -1 }
+  ];
+}
+
 function drawSearchTab(label: string, active: boolean): string {
   const content = `[${label}]`;
   return active
@@ -715,6 +789,9 @@ function getKeyHints(state: TuiState): string {
   }
   if (state.currentFeed) {
     hints.push("n 更多");
+  }
+  if (state.currentFavorites) {
+    hints.push("d 取消收藏");
   }
   if (state.mode === "topic") {
     hints.push("c 评论", "C 引用评", "a 赞", "s 踩", "d 收藏", "u 用户页", "z 进版", "x 复制链接");

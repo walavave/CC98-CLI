@@ -27,7 +27,7 @@ export interface ConfirmDialogState {
   confirmLabel: string;
   cancelLabel: string;
   selectedIndex: number;
-  action: "logout" | "cache-cleanup";
+  action: "logout" | "cache-cleanup" | "favorite-group-delete";
 }
 
 export function createLoginForm(): LoginFormState {

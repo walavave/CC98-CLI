@@ -16,3 +16,7 @@ export {
   handleFollowingContentFocus,
   isAtFollowingEnd
 } from "./content/following.js";
+export {
+  handleFavoriteContentFocus,
+  isAtFavoritesEnd
+} from "./content/favorites.js";

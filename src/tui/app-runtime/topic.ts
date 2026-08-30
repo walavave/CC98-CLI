@@ -6,7 +6,7 @@ import { currentTopicLine, currentTopicPost, getStatus, type TopicVoteState, typ
 import { clearTopicViewportAnchor } from "../topic-scroll.js";
 import type { RuntimeContext } from "./context.js";
 import { openTopicImageViewer, stepTopicImageViewer } from "./image-viewer.js";
-import { openComposeModal, openRatingDialog } from "./modals.js";
+import { openComposeModal, openFavoriteGroupPicker, openRatingDialog } from "./modals.js";
 import { leaveTopicMode, showNotification } from "./state.js";
 
 export function handleTopicMode(context: RuntimeContext, key: string, keyAction: string | undefined): void {
@@ -525,30 +525,32 @@ async function toggleCurrentTopicFavorite(context: RuntimeContext): Promise<void
     return;
   }
 
-  const nextFavoriteState = !topic.isFavorite;
-  state.status = nextFavoriteState ? "正在收藏帖子..." : "正在取消收藏...";
-  render();
-
-  try {
-    if (nextFavoriteState) {
-      await client.favoriteTopic(topic.topicId);
-    } else {
-      await client.unfavoriteTopic(topic.topicId);
-    }
-    topic.isFavorite = nextFavoriteState;
-    if (!nextFavoriteState && state.currentFeed?.kind === "me-favorites") {
-      state.items = state.items.filter((item) => item.topicId !== topic.topicId);
-      if (state.currentFeed.loaded > 0) {
-        state.currentFeed.loaded = Math.max(0, state.currentFeed.loaded - 1);
-      }
-      state.itemIndex = Math.max(0, Math.min(state.itemIndex, state.items.length - 1));
-    }
-    showNotification(state, nextFavoriteState ? "已收藏当前帖子" : "已取消收藏当前帖子");
-    state.status = getStatus(state);
-  } catch (error) {
-    state.error = error instanceof Error ? error.message : String(error);
-    state.status = nextFavoriteState ? "收藏失败" : "取消收藏失败";
-  } finally {
+  if (topic.isFavorite) {
+    state.status = "正在取消收藏...";
     render();
+    try {
+      await client.unfavoriteTopic(topic.topicId);
+      topic.isFavorite = false;
+      if (state.currentFeed?.kind === "me-favorites") {
+        state.items = state.items.filter((item) => item.topicId !== topic.topicId);
+        if (state.currentFeed.loaded > 0) {
+          state.currentFeed.loaded = Math.max(0, state.currentFeed.loaded - 1);
+        }
+        if (state.currentFavorites) {
+          state.currentFavorites.loaded = Math.max(0, state.currentFavorites.loaded - 1);
+        }
+        state.itemIndex = Math.max(0, Math.min(state.itemIndex, state.items.length - 1));
+      }
+      showNotification(state, "已取消收藏当前帖子");
+      state.status = getStatus(state);
+    } catch (error) {
+      state.error = error instanceof Error ? error.message : String(error);
+      state.status = "取消收藏失败";
+    } finally {
+      render();
+    }
+    return;
   }
+
+  openFavoriteGroupPicker(context);
 }

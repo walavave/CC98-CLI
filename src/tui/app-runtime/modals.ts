@@ -6,6 +6,14 @@ import { emotionCategories, getEmotionCategory } from "../media/emotion-catalog.
 import { readClipboardImageFile, readClipboardText } from "../media/clipboard.js";
 import { graphemes } from "../render-core/text.js";
 import { getDefaultAccountName, normalizeLoginMessage, refreshAccounts } from "../data/accounts.js";
+import {
+  favoriteGroupName,
+  favoriteToGroup,
+  fetchFavoriteGroups,
+  handleCreateFavoriteGroup,
+  handleDeleteFavoriteGroup,
+  handleRenameFavoriteGroup
+} from "../data/favorites.js";
 import { getStatus } from "../tui-model.js";
 import type { RuntimeContext } from "./context.js";
 import { showNotification } from "./state.js";
@@ -252,6 +260,20 @@ export function handleConfirmModal(context: RuntimeContext, key: string): void {
 
   const action = state.confirmDialog.action;
   state.modal = null;
+
+  if (action === "favorite-group-delete") {
+    const groupId = state.currentFavorites?.groupId;
+    state.confirmDialog = undefined;
+    if (groupId === undefined || groupId <= 0) {
+      state.status = getStatus(state);
+      render();
+      return;
+    }
+    state.status = "正在删除分组...";
+    render();
+    void handleDeleteFavoriteGroup(client, state, render, groupId);
+    return;
+  }
 
   if (action === "cache-cleanup") {
     state.status = "正在清理缓存...";
@@ -709,4 +731,215 @@ export function checkUpdate(context: RuntimeContext): void {
     state.status = error instanceof Error ? error.message : "检查更新失败";
     render();
   });
+}
+
+export function handleMenuModal(context: RuntimeContext, key: string): void {
+  const { state, render } = context;
+  const dialog = state.menuDialog;
+  if (!dialog) {
+    state.modal = null;
+    render();
+    return;
+  }
+  if (key === "j" || key === "\x1b[B") {
+    dialog.selectedIndex = Math.min(dialog.items.length - 1, dialog.selectedIndex + 1);
+    render();
+    return;
+  }
+  if (key === "k" || key === "\x1b[A") {
+    dialog.selectedIndex = Math.max(0, dialog.selectedIndex - 1);
+    render();
+    return;
+  }
+  if (key === "h" || key === "\x1b[D" || key === "\x1b") {
+    state.modal = null;
+    state.menuDialog = undefined;
+    state.status = getStatus(state);
+    render();
+    return;
+  }
+  if (key === "\r" || key === "l" || key === "\x1b[C") {
+    const action = dialog.items[dialog.selectedIndex]?.action;
+    state.modal = null;
+    state.menuDialog = undefined;
+    render();
+    if (action) {
+      executeMenuAction(context, action);
+    }
+  }
+}
+
+export function executeMenuAction(context: RuntimeContext, action: string): void {
+  const { state, render, client } = context;
+  if (action.startsWith("favorite-to-group:")) {
+    void favoriteToGroup(client, state, render, Number(action.slice(19)));
+    return;
+  }
+  if (action === "favorite-group-rename") {
+    startRenameFavoriteGroup(context);
+    return;
+  }
+  if (action === "favorite-group-delete") {
+    confirmDeleteFavoriteGroup(context);
+  }
+}
+
+export function handleInputModal(context: RuntimeContext, key: string): void {
+  const { state, render, client } = context;
+  const dialog = state.inputDialog;
+  if (!dialog) {
+    state.modal = null;
+    render();
+    return;
+  }
+  if (key === "\r") {
+    const value = dialog.value.trim();
+    state.modal = null;
+    state.inputDialog = undefined;
+    if (!value) {
+      state.status = "已取消";
+      render();
+      return;
+    }
+    if (dialog.action === "favorite-group-create") {
+      void handleCreateFavoriteGroup(client, state, render, value);
+      return;
+    }
+    if (dialog.action === "favorite-group-rename" && dialog.groupId !== undefined) {
+      void handleRenameFavoriteGroup(client, state, render, dialog.groupId, value);
+      return;
+    }
+    state.status = getStatus(state);
+    render();
+    return;
+  }
+  if (key === "\x1b" || key === "h") {
+    state.modal = null;
+    state.inputDialog = undefined;
+    state.status = getStatus(state);
+    render();
+    return;
+  }
+  if (key === "\x7f") {
+    dialog.value = dialog.value.slice(0, -1);
+    render();
+    return;
+  }
+  if (isPrintableInput(key) || isPrintableTextInput(key)) {
+    dialog.value = `${dialog.value}${key}`;
+    render();
+  }
+}
+
+export function openFavoriteGroupPicker(context: RuntimeContext): void {
+  const { state, render, client } = context;
+  if (!state.topic) {
+    return;
+  }
+  state.status = "正在获取收藏分组...";
+  render();
+  void fetchFavoriteGroups(client, true).then((groups) => {
+    if (groups.length === 0) {
+      state.status = "没有收藏分组，将收藏到默认分组";
+      void favoriteToGroup(client, state, render, 0);
+      return;
+    }
+    const ordered = [...groups].sort((a, b) => (a.id === 0 ? -1 : b.id === 0 ? 1 : 0));
+    state.menuDialog = {
+      title: "收藏到分组",
+      items: ordered.map((group) => ({ label: group.name, action: `favorite-to-group:${group.id}` })),
+      selectedIndex: 0
+    };
+    state.modal = "menu";
+    render();
+  }).catch((error: unknown) => {
+    state.error = error instanceof Error ? error.message : String(error);
+    state.status = "获取分组失败";
+    render();
+  });
+}
+
+export function openFavoriteGroupMenu(context: RuntimeContext): void {
+  const { state, render } = context;
+  const favorites = state.currentFavorites;
+  if (!favorites) {
+    return;
+  }
+  if (favorites.groupId === 0) {
+    state.status = "默认分组不可管理";
+    render();
+    return;
+  }
+  if (favorites.groupId === -1) {
+    state.status = "请先创建分组";
+    render();
+    return;
+  }
+  state.menuDialog = {
+    title: "分组管理",
+    items: [
+      { label: "重命名分组", action: "favorite-group-rename" },
+      { label: "删除分组", action: "favorite-group-delete" }
+    ],
+    selectedIndex: 0
+  };
+  state.modal = "menu";
+  render();
+}
+
+export function startCreateFavoriteGroup(context: RuntimeContext): void {
+  const { state, render } = context;
+  state.inputDialog = {
+    prompt: "新建分组名称: ",
+    value: "",
+    action: "favorite-group-create"
+  };
+  state.modal = "input";
+  state.status = "输入分组名称：Enter 确认  Esc 取消";
+  render();
+}
+
+export function startRenameFavoriteGroup(context: RuntimeContext): void {
+  const { state, render } = context;
+  const favorites = state.currentFavorites;
+  if (!favorites) {
+    return;
+  }
+  if (favorites.groupId === 0) {
+    state.status = "默认分组不可重命名";
+    render();
+    return;
+  }
+  state.inputDialog = {
+    prompt: `重命名「${favoriteGroupName(favorites, favorites.groupId)}」为: `,
+    value: "",
+    action: "favorite-group-rename",
+    groupId: favorites.groupId
+  };
+  state.modal = "input";
+  state.status = "输入分组名称：Enter 确认  Esc 取消";
+  render();
+}
+
+export function confirmDeleteFavoriteGroup(context: RuntimeContext): void {
+  const { state, render } = context;
+  const favorites = state.currentFavorites;
+  if (!favorites) {
+    return;
+  }
+  if (favorites.groupId === 0) {
+    state.status = "默认分组不可删除";
+    render();
+    return;
+  }
+  state.confirmDialog = {
+    title: "删除分组",
+    detail: `确定删除分组「${favoriteGroupName(favorites, favorites.groupId)}」？组内收藏将移至默认分组。`,
+    confirmLabel: "确认删除",
+    cancelLabel: "取消",
+    selectedIndex: 1,
+    action: "favorite-group-delete"
+  };
+  state.modal = "confirm";
+  render();
 }

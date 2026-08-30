@@ -13,7 +13,9 @@ import {
   handleComposeBackspace,
   handleAccountModal,
   handleConfirmModal,
+  handleInputModal,
   handleLoginModal,
+  handleMenuModal,
   handleRatingModal,
   handleHiddenPatternsModal,
   insertComposeText,
@@ -76,6 +78,16 @@ export function createKeyHandler(context: RuntimeContext): (key: string) => void
       return;
     }
 
+    if (state.modal === "menu") {
+      handleMenuModal(context, key);
+      return;
+    }
+
+    if (state.modal === "input") {
+      handleInputModal(context, key);
+      return;
+    }
+
     if (state.modal === "image") {
       handleImageModal(context, key);
       return;
@@ -128,6 +140,9 @@ function isTextEntryActive(state: TuiState): boolean {
   }
   if (state.modal === "login") {
     return state.loginForm.fieldIndex < 2;
+  }
+  if (state.modal === "input") {
+    return true;
   }
   return state.focus === "content"
     && state.currentSearch?.focus === "input";

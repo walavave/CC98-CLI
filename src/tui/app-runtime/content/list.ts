@@ -7,11 +7,13 @@ import {
   openNoticeList,
   openUserProfile
 } from "../../data/content.js";
+import { toggleBoardFavorite } from "../../data/favorites.js";
 import { openTopic } from "../../data/topic.js";
 import type { RuntimeContext } from "../context.js";
 import { openSelectedMeItem, refreshCurrentMeView, toggleCurrentUserFollow } from "../me.js";
 import { openComposeModal } from "../modals.js";
 import { openChatImageViewer } from "../image-viewer.js";
+import { handleFavoriteContentFocus } from "./favorites.js";
 import { handleFollowingContentFocus } from "./following.js";
 import { leaveContentMode } from "../state.js";
 import { handleSearchContentFocus } from "./search.js";
@@ -25,6 +27,10 @@ export function handleContentFocus(context: RuntimeContext, key: string, keyActi
   }
   if (state.currentFollowing) {
     handleFollowingContentFocus(context, key);
+    return;
+  }
+  if (state.currentFavorites) {
+    handleFavoriteContentFocus(context, key);
     return;
   }
   if (state.currentSearch) {
@@ -81,6 +87,10 @@ export function handleContentFocus(context: RuntimeContext, key: string, keyActi
   }
   if (key === "a" && state.currentUser) {
     void toggleCurrentUserFollow(context);
+    return;
+  }
+  if (key === "d" && state.currentBoard) {
+    void toggleBoardFavorite(client, state, render, state.currentBoard.boardId);
     return;
   }
   if (key === "d" && state.currentUser && state.currentFeed?.kind !== "me-profile") {
@@ -140,7 +150,7 @@ export function handleContentFocus(context: RuntimeContext, key: string, keyActi
 }
 
 function handleBoardDirectoryFocus(context: RuntimeContext, key: string): void {
-  const { state, render, abortCurrent } = context;
+  const { state, render, client, abortCurrent } = context;
   const directory = state.currentBoardDirectory;
   if (!directory) return;
 
@@ -196,6 +206,13 @@ function handleBoardDirectoryFocus(context: RuntimeContext, key: string): void {
     if (!openSelectedItem(context)) {
       state.status = "当前条目不可进入";
       render();
+    }
+    return;
+  }
+  if (key === "d") {
+    const selected = state.items[state.itemIndex];
+    if (selected?.boardId !== undefined) {
+      void toggleBoardFavorite(client, state, render, selected.boardId);
     }
   }
 }

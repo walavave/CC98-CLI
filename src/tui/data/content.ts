@@ -322,7 +322,7 @@ export async function loadNextFeedPage(
   render();
 
   try {
-    const { items: nextItems, received } = await loadFeedPageItems(client, feed, false, signal);
+    const { items: nextItems, received } = await loadFeedPageItems(client, feed, false, signal, state.currentFavorites?.groupId ?? 0);
             const seen = new Set(state.items.map((item) => feedItemKey(item)));
             const fresh = nextItems.filter((item) => !seen.has(feedItemKey(item)));
     state.items = [...state.items, ...fresh];

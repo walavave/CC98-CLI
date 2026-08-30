@@ -6,12 +6,41 @@ import type {
 
 export type ViewId = "hot" | "new" | "search" | "boards" | "following" | "notifications" | "messages" | "me" | "settings";
 export type FocusColumn = "nav" | "content";
-export type ModalType = "help" | "account" | "login" | "confirm" | "image" | "compose" | "emotion-picker" | "rating" | "hidden-patterns" | null;
+export type ModalType = "help" | "account" | "login" | "confirm" | "image" | "compose" | "emotion-picker" | "rating" | "hidden-patterns" | "menu" | "input" | null;
 export type SearchFocus = "tabs" | "input" | "results";
 export type SearchKind = "topic" | "board" | "user" | "board-topic";
 export type NoticeType = "system" | "at" | "reply";
 export type FollowingFocus = "tabs" | "results";
 export type FollowingKind = "board" | "user" | "favorite";
+export type FavoritesFocus = "tabs" | "results";
+
+export interface FavoriteGroup {
+  id: number;
+  name: string;
+}
+
+export interface FavoriteListState {
+  title: string;
+  groups: FavoriteGroup[];
+  groupId: number;  // -1 = "+" 新建分组 tab
+  loaded: number;
+  size: number;
+  hasMore: boolean;
+  focus: FavoritesFocus;
+}
+
+export interface MenuDialogState {
+  title: string;
+  items: Array<{ label: string; action: string }>;
+  selectedIndex: number;
+}
+
+export interface InputDialogState {
+  prompt: string;
+  value: string;
+  action: "favorite-group-create" | "favorite-group-rename";
+  groupId?: number;
+}
 
 export interface NavItem {
   id: ViewId;
@@ -74,6 +103,7 @@ export interface TuiState {
   currentChat?: ChatListState;
   currentSearch?: SearchListState;
   currentFollowing?: FollowingListState;
+  currentFavorites?: FavoriteListState;
   currentBoardDirectory?: BoardDirectoryState;
   currentUser?: UserProfileListState;
   topic?: TopicReaderState;
@@ -84,6 +114,8 @@ export interface TuiState {
   imageViewer?: ImageViewerState;
   composeDialog?: ComposeDialogState;
   ratingDialog?: RatingDialogState;
+  menuDialog?: MenuDialogState;
+  inputDialog?: InputDialogState;
   helpScroll: number;
   hiddenPatternsDialog?: { selectedIndex: number; custom: string; patterns: string[] };
 }
@@ -99,6 +131,7 @@ export interface ListSnapshot {
   currentChat?: ChatListState;
   currentSearch?: SearchListState;
   currentFollowing?: FollowingListState;
+  currentFavorites?: FavoriteListState;
   currentBoardDirectory?: BoardDirectoryState;
   currentUser?: UserProfileListState;
 }
@@ -376,6 +409,12 @@ export function getStatus(state: TuiState): string {
       ? `${label}结果 ${state.items.length} 项，继续向下可加载更多`
       : `${label}结果 ${state.items.length} 项`;
   }
+  if (state.currentFavorites) {
+    const name = favoriteGroupNameForStatus(state.currentFavorites);
+    return state.currentFavorites.hasMore
+      ? `收藏 · ${name} ${state.items.length} 项，继续向下可加载更多`
+      : `收藏 · ${name} ${state.items.length} 项`;
+  }
   if (state.currentFollowing) {
     const label = followingKindLabelForStatus(state.currentFollowing.kind);
     return state.currentFollowing.hasMore
@@ -383,6 +422,14 @@ export function getStatus(state: TuiState): string {
       : `关注${label} ${state.items.length} 项`;
   }
   return `${state.items.length} 项`;
+}
+
+function favoriteGroupNameForStatus(favorites: FavoriteListState): string {
+  if (favorites.groupId === -1) {
+    return "新建分组";
+  }
+  const group = favorites.groups.find((entry) => entry.id === favorites.groupId);
+  return group?.name ?? (favorites.groupId === 0 ? "默认分组" : `#${favorites.groupId}`);
 }
 
 function searchKindLabelForStatus(search: SearchListState): string {

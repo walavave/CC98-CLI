@@ -1,6 +1,7 @@
 import type { RuntimeContext } from "./context.js";
+import { openMyFavorites } from "../data/favorites.js";
+import { openMyFans, openMyHistory, openMyProfile, openMyReplies } from "../data/me.js";
 import { describeUserProfileStatus } from "../data/view-items.js";
-import { openMyFans, openMyFavoriteTopics, openMyHistory, openMyProfile, openMyReplies } from "../data/me.js";
 
 export function openSelectedMeItem(context: RuntimeContext): boolean {
   const { state, render, client, nextSignal } = context;
@@ -10,7 +11,7 @@ export function openSelectedMeItem(context: RuntimeContext): boolean {
     return true;
   }
   if (selected?.action === "me.favorites") {
-    void openMyFavoriteTopics(client, state, render, true, nextSignal());
+    void openMyFavorites(client, state, render, true, nextSignal());
     return true;
   }
   if (selected?.action === "me.replies") {
@@ -35,7 +36,7 @@ export function refreshCurrentMeView(context: RuntimeContext): boolean {
     return true;
   }
   if (state.currentFeed?.kind === "me-favorites") {
-    void openMyFavoriteTopics(client, state, render, true, nextSignal(), false);
+    void openMyFavorites(client, state, render, true, nextSignal(), false);
     return true;
   }
   if (state.currentFeed?.kind === "me-replies") {

@@ -65,40 +65,6 @@ export async function openMyProfile(
   }
 }
 
-export async function openMyFavoriteTopics(
-  client: CachedCc98Client,
-  state: TuiState,
-  render: () => void,
-  force = false,
-  signal?: AbortSignal,
-  pushParent = true
-): Promise<void> {
-  const size = 10;
-  prepareListView(state, { title: "我的收藏", status: "正在读取我的收藏...", pushParent });
-  state.currentFeed = { kind: "me-favorites", title: "我的收藏", loaded: 0, size, hasMore: true };
-  render();
-
-  try {
-    const topics = asArray(await client.getFavoriteTopics(0, size + 1, 1, 0, force, signal));
-    const items = topics.slice(0, size).map((topic) => topicItem(topic));
-    state.items = items;
-    if (state.currentFeed) {
-      state.currentFeed.loaded = items.length;
-      state.currentFeed.hasMore = topics.length > size;
-      state.status = describeFeedStatus(state.currentFeed);
-    }
-  } catch (error) {
-    if (isAbortError(error)) {
-      return;
-    }
-    state.error = error instanceof Error ? error.message : String(error);
-    state.status = "我的收藏读取失败；h 返回左栏  r 重试";
-  } finally {
-    state.loading = false;
-    render();
-  }
-}
-
 export async function openMyReplies(
   client: CachedCc98Client,
   state: TuiState,

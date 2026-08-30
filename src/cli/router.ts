@@ -1,6 +1,7 @@
 import { accountCommand } from "./commands/account.js";
 import { boardCommand } from "./commands/board.js";
 import { cacheCommand } from "./commands/cache.js";
+import { favoriteCommand } from "./commands/favorite.js";
 import { forumCommand } from "./commands/forum.js";
 import { loginCommand } from "./commands/login.js";
 import { logoutCommand } from "./commands/logout.js";
@@ -23,6 +24,7 @@ const commands: Record<string, CommandHandler> = {
   account: accountCommand,
   board: boardCommand,
   cache: cacheCommand,
+  favorite: favoriteCommand,
   forum: forumCommand,
   login: loginCommand,
   logout: logoutCommand,
@@ -76,6 +78,7 @@ Usage:
   cc98 logout               Remove saved tokens
   cc98 me                   Show current user profile
   cc98 me signin            Sign in daily
+  cc98 favorite ...         Manage favorites, groups and boards
   cc98 forum index          Read forum index config
   cc98 forum boards         Read all boards
   cc98 board <board-id>     List topics in a board

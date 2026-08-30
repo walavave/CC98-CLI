@@ -78,6 +78,11 @@ export const endpoints = {
   write: {
     addFavorite: (topicId: number, groupId = 0) => `${base}/me/favorite/${topicId}?groupid=${groupId}`,
     removeFavorite: (topicId: number) => `${base}/me/favorite/${topicId}`,
+    createFavoriteGroup: `${base}/me/favorite-topic-group`,
+    updateFavoriteGroup: `${base}/me/favorite-topic-group/`,   // 尾斜杠，body 带 {id, name}
+    deleteFavoriteGroup: (groupId: number) => `${base}/me/favorite-topic-group?groupid=${groupId}`,
+    addBoardFavorite: (boardId: number) => `${base}/me/custom-board/${boardId}`,
+    removeBoardFavorite: (boardId: number) => `${base}/me/custom-board/${boardId}`,
     signin: `${base}/me/signin`
   }
 } as const;

@@ -43,6 +43,12 @@ export function drawModalFrame(baseLines: string[], state: TuiState, width: numb
   if (state.modal === "rating" && state.ratingDialog) {
     return { text: drawRatingModal(baseLines, state, width, height) };
   }
+  if (state.modal === "menu" && state.menuDialog) {
+    return { text: drawMenuModal(baseLines, state, width, height) };
+  }
+  if (state.modal === "input" && state.inputDialog) {
+    return { text: drawInputModal(baseLines, state, width, height) };
+  }
   if (state.modal === "hidden-patterns" && state.hiddenPatternsDialog) {
     const canvas = new Canvas(width, height);
     canvas.drawLines(rect(width, height), baseLines);
@@ -438,6 +444,63 @@ function drawRatingModal(baseLines: string[], state: TuiState, width: number, he
 
   rows.push("");
   rows.push(textStyle.muted(" Enter 确认  Esc 取消"));
+
+  const modalWidth = Math.min(width - 2, innerWidth + 2);
+  const modalHeight = Math.min(height - 2, rows.length + 2);
+  const area = center(rect(width, height), modalWidth, modalHeight);
+  canvas.overlay(area, rows, { fill: theme.color.panelBg });
+  return canvas.toString();
+}
+
+function drawMenuModal(baseLines: string[], state: TuiState, width: number, height: number): string {
+  const dialog = state.menuDialog;
+  if (!dialog) {
+    return baseLines.join("\n");
+  }
+
+  const canvas = new Canvas(width, height);
+  canvas.drawLines(rect(width, height), baseLines);
+
+  const innerWidth = Math.max(26, Math.min(width - 6, 42));
+  const rows = [
+    textStyle.primaryBold(` ${dialog.title}`),
+    textStyle.muted(" j/k 选择"),
+    ""
+  ];
+
+  for (const item of dialog.items) {
+    const selected = item === dialog.items[dialog.selectedIndex];
+    const line = ` ${selected ? theme.marker.selected : "○"} ${item.label}`;
+    rows.push(selected ? selectedLine(line, innerWidth, true) : fit(line, innerWidth));
+  }
+
+  rows.push("");
+  rows.push(textStyle.muted(" Enter 确认  Esc 取消"));
+
+  const modalWidth = Math.min(width - 2, innerWidth + 2);
+  const modalHeight = Math.min(height - 2, rows.length + 2);
+  const area = center(rect(width, height), modalWidth, modalHeight);
+  canvas.overlay(area, rows, { fill: theme.color.panelBg });
+  return canvas.toString();
+}
+
+function drawInputModal(baseLines: string[], state: TuiState, width: number, height: number): string {
+  const dialog = state.inputDialog;
+  if (!dialog) {
+    return baseLines.join("\n");
+  }
+
+  const canvas = new Canvas(width, height);
+  canvas.drawLines(rect(width, height), baseLines);
+
+  const innerWidth = Math.max(30, Math.min(width - 6, 50));
+  const rows = [
+    textStyle.primaryBold(" 收藏分组"),
+    "",
+    ` ${dialog.prompt}${dialog.value}${emotionCursor()}`,
+    "",
+    textStyle.muted(" Enter 确认  Esc 取消")
+  ];
 
   const modalWidth = Math.min(width - 2, innerWidth + 2);
   const modalHeight = Math.min(height - 2, rows.length + 2);

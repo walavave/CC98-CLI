@@ -329,7 +329,8 @@ export async function loadFeedPageItems(
   client: CachedCc98Client,
   feed: NonNullable<TuiState["currentFeed"]>,
   force: boolean,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  favoritesGroupId = 0
 ): Promise<{ items: ContentItem[]; received: number }> {
   switch (feed.kind) {
     case "me-profile":
@@ -369,7 +370,7 @@ export async function loadFeedPageItems(
       return { items: visibleChats.map((chat) => chatItem(chat, userNames)), received: chats.length };
     }
     case "me-favorites": {
-      const topics = asArray(await client.getFavoriteTopics(feed.loaded, feed.size + 1, 1, 0, force, signal));
+      const topics = asArray(await client.getFavoriteTopics(feed.loaded, feed.size + 1, 0, favoritesGroupId, force, signal));
       return { items: topics.slice(0, feed.size).map((topic) => topicItem(topic)), received: topics.length };
     }
     case "me-replies": {

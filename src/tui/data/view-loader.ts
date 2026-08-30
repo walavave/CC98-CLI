@@ -180,7 +180,7 @@ export async function loadView(
             detail: String(meObject.name ?? meObject.id ?? "打开当前账号的用户页"),
             action: "me.profile"
           },
-          { title: "我的收藏", detail: "查看已收藏的主题", action: "me.favorites" },
+          { title: "我的收藏", detail: "查看收藏的主题与分组", action: "me.favorites" },
           { title: "我的回复", detail: "查看最近回复的帖子", action: "me.replies" },
           { title: "我的足迹", detail: "查看浏览记录", action: "me.history" },
           { title: "我的粉丝", detail: "查看关注你的用户", action: "me.fans" }

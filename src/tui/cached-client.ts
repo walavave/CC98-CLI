@@ -88,6 +88,15 @@ export class CachedCc98Client {
     );
   }
 
+  getFavoriteGroups(force = false, signal?: AbortSignal): Promise<unknown> {
+    return this.cache.getOrSet(
+      "user:favorite-groups",
+      5 * minute,
+      () => this.client.getFavoriteGroups(),
+      { force }
+    );
+  }
+
   getRecentPosts(from = 0, size = 11, force = false, signal?: AbortSignal): Promise<unknown> {
     return this.cache.getOrSet(
       `user:recent-post:${from}:${size}`,
@@ -266,8 +275,8 @@ export class CachedCc98Client {
     return result;
   }
 
-  async favoriteTopic(topicId: number): Promise<unknown> {
-    const result = await this.client.favoriteTopic(topicId);
+  async favoriteTopic(topicId: number, groupId = 0): Promise<unknown> {
+    const result = await this.client.favoriteTopic(topicId, groupId);
     await this.cache.delete(`topic:favorite-state:${topicId}`);
     return result;
   }
@@ -275,6 +284,36 @@ export class CachedCc98Client {
   async unfavoriteTopic(topicId: number): Promise<unknown> {
     const result = await this.client.unfavoriteTopic(topicId);
     await this.cache.delete(`topic:favorite-state:${topicId}`);
+    return result;
+  }
+
+  async createFavoriteGroup(name: string): Promise<unknown> {
+    const result = await this.client.createFavoriteGroup(name);
+    await this.cache.delete("user:favorite-groups");
+    return result;
+  }
+
+  async updateFavoriteGroup(groupId: number, name: string): Promise<unknown> {
+    const result = await this.client.updateFavoriteGroup(groupId, name);
+    await this.cache.delete("user:favorite-groups");
+    return result;
+  }
+
+  async deleteFavoriteGroup(groupId: number): Promise<unknown> {
+    const result = await this.client.deleteFavoriteGroup(groupId);
+    await this.cache.delete("user:favorite-groups");
+    return result;
+  }
+
+  async addBoardFavorite(boardId: number): Promise<unknown> {
+    const result = await this.client.addBoardFavorite(boardId);
+    await this.cache.delete("user:me");
+    return result;
+  }
+
+  async removeBoardFavorite(boardId: number): Promise<unknown> {
+    const result = await this.client.removeBoardFavorite(boardId);
+    await this.cache.delete("user:me");
     return result;
   }
 

@@ -40,8 +40,8 @@ export function describeFeedStatus(feed: FeedListState): string {
         : "消息：j/k 选择  l 打开会话  h 返回  r 刷新";
     case "me-favorites":
       return feed.hasMore
-        ? "我的收藏：j/k 选择  l 打开帖子  n/Space 更多  Esc/Backspace 返回  h 返回左栏"
-        : "我的收藏：j/k 选择  l 打开帖子  Esc/Backspace 返回  h 返回左栏";
+        ? "我的收藏：左右切换分组  j/k 选择  l 打开帖子  d 取消收藏  n/Space 更多  h 返回"
+        : "我的收藏：左右切换分组  j/k 选择  l 打开帖子  d 取消收藏  h 返回";
     case "me-replies":
       return feed.hasMore
         ? "我的回复：j/k 选择  l 打开帖子  n/Space 更多  Esc/Backspace 返回  h 返回左栏"
