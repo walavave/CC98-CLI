@@ -790,9 +790,7 @@ function getKeyHints(state: TuiState): string {
   if (state.currentFeed) {
     hints.push("n 更多");
   }
-  if (state.currentFavorites) {
-    hints.push("d 取消收藏");
-  }
+  // 收藏视图的 d/a/s 提示已在左下角状态栏展示，右下角不再重复
   if (state.mode === "topic") {
     hints.push("c 评论", "C 引用评", "a 赞", "s 踩", "d 收藏", "u 用户页", "z 进版", "x 复制链接");
     if (state.topic?.vote) {

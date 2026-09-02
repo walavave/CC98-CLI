@@ -83,9 +83,7 @@ export async function loadFavoriteView(
       state.currentFeed.hasMore = topics.length > favorites.size;
     }
     const name = favoriteGroupName(favorites, activeGroupId);
-    state.status = favorites.hasMore
-      ? `收藏 · ${name}：左右切换分组  j 进入结果  l 打开帖子  d 取消收藏  o 管理分组  n/Space 更多  h 返回  r 刷新`
-      : `收藏 · ${name}：左右切换分组  j 进入结果  l 打开帖子  d 取消收藏  o 管理分组  h 返回  r 刷新`;
+    state.status = `收藏 · ${name}：d 取消收藏  a 管理分组  s 移动分组`;
   } catch (error) {
     if (isAbortError(error)) {
       return;
@@ -239,6 +237,28 @@ export async function favoriteToGroup(
     state.error = error instanceof Error ? error.message : String(error);
     state.status = "收藏失败";
   } finally {
+    render();
+  }
+}
+
+export async function moveFavoriteToGroup(
+  client: CachedCc98Client,
+  state: TuiState,
+  render: () => void,
+  topicId: number,
+  groupId: number
+): Promise<void> {
+  try {
+    await client.favoriteTopic(topicId, groupId);
+    const name = state.currentFavorites
+      ? favoriteGroupName(state.currentFavorites, groupId)
+      : `#${groupId}`;
+    state.notification = { message: `已移动到分组「${name}」`, expiresAt: Date.now() + 2200 };
+    // 强制刷新当前分组列表：被移动的帖子会从当前分组消失
+    await loadFavoriteView(client, state, render, true);
+  } catch (error) {
+    state.error = error instanceof Error ? error.message : String(error);
+    state.status = "移动分组失败";
     render();
   }
 }

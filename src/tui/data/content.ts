@@ -331,6 +331,11 @@ export async function loadNextFeedPage(
     }
     feed.loaded += nextItems.length;
     feed.hasMore = received > feed.size;
+    // 收藏视图渲染层读 favorites.hasMore，分页后必须同步，否则到底仍显示"加载更多"
+    if (state.currentFavorites) {
+      state.currentFavorites.hasMore = feed.hasMore;
+      state.currentFavorites.loaded = feed.loaded;
+    }
     state.status = describeFeedStatus(feed);
   } catch (error) {
     if (isAbortError(error)) {

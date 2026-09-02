@@ -7,7 +7,7 @@ import {
 } from "../../data/favorites.js";
 import { openTopic } from "../../data/topic.js";
 import type { RuntimeContext } from "../context.js";
-import { openFavoriteGroupMenu, startCreateFavoriteGroup } from "../modals.js";
+import { openFavoriteGroupMenu, openFavoriteMovePicker, startCreateFavoriteGroup } from "../modals.js";
 import { leaveContentMode } from "../state.js";
 
 export function handleFavoriteContentFocus(context: RuntimeContext, key: string): void {
@@ -37,7 +37,7 @@ export function handleFavoriteContentFocus(context: RuntimeContext, key: string)
     return;
   }
 
-  if (key === "o") {
+  if (key === "a") {
     openFavoriteGroupMenu(context);
     return;
   }
@@ -94,6 +94,10 @@ export function handleFavoriteContentFocus(context: RuntimeContext, key: string)
     if (selected?.topicId !== undefined) {
       void unfavoriteTopicFromList(client, state, render, selected.topicId);
     }
+    return;
+  }
+  if (key === "s") {
+    openFavoriteMovePicker(context);
     return;
   }
   if (key === "r") {

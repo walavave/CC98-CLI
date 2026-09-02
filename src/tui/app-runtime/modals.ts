@@ -12,7 +12,8 @@ import {
   fetchFavoriteGroups,
   handleCreateFavoriteGroup,
   handleDeleteFavoriteGroup,
-  handleRenameFavoriteGroup
+  handleRenameFavoriteGroup,
+  moveFavoriteToGroup
 } from "../data/favorites.js";
 import { getStatus } from "../tui-model.js";
 import type { RuntimeContext } from "./context.js";
@@ -800,6 +801,13 @@ export function executeMenuAction(context: RuntimeContext, action: string): void
     void favoriteToGroup(client, state, render, Number(action.slice(19)));
     return;
   }
+  if (action.startsWith("move-to-group:")) {
+    const topicId = state.items[state.itemIndex]?.topicId;
+    if (topicId !== undefined) {
+      void moveFavoriteToGroup(client, state, render, topicId, Number(action.slice(14)));
+    }
+    return;
+  }
   if (action === "favorite-group-rename") {
     startRenameFavoriteGroup(context);
     return;
@@ -884,15 +892,42 @@ export function openFavoriteGroupPicker(context: RuntimeContext): void {
   });
 }
 
+export function openFavoriteMovePicker(context: RuntimeContext): void {
+  const { state, render, client } = context;
+  const favorites = state.currentFavorites;
+  const selected = state.items[state.itemIndex];
+  if (!favorites || selected?.topicId === undefined) {
+    return;
+  }
+  state.status = "正在获取收藏分组...";
+  render();
+  void fetchFavoriteGroups(client, true).then((groups) => {
+    favorites.groups = groups;
+    const others = groups.filter((group) => group.id !== favorites.groupId);
+    if (others.length === 0) {
+      state.status = "没有其他分组";
+      render();
+      return;
+    }
+    const ordered = [...others].sort((a, b) => (a.id === 0 ? -1 : b.id === 0 ? 1 : 0));
+    state.menuDialog = {
+      title: "移动到分组",
+      items: ordered.map((group) => ({ label: group.name, action: `move-to-group:${group.id}` })),
+      selectedIndex: 0
+    };
+    state.modal = "menu";
+    render();
+  }).catch((error: unknown) => {
+    state.error = error instanceof Error ? error.message : String(error);
+    state.status = "获取分组失败";
+    render();
+  });
+}
+
 export function openFavoriteGroupMenu(context: RuntimeContext): void {
   const { state, render } = context;
   const favorites = state.currentFavorites;
   if (!favorites) {
-    return;
-  }
-  if (favorites.groupId === 0) {
-    state.status = "默认分组不可管理";
-    render();
     return;
   }
   if (favorites.groupId === -1) {
@@ -900,12 +935,16 @@ export function openFavoriteGroupMenu(context: RuntimeContext): void {
     render();
     return;
   }
+  // 默认分组（id 0）是兜底分组，不可删除，仅可重命名
+  const items = favorites.groupId === 0
+    ? [{ label: "重命名分组", action: "favorite-group-rename" }]
+    : [
+        { label: "重命名分组", action: "favorite-group-rename" },
+        { label: "删除分组", action: "favorite-group-delete" }
+      ];
   state.menuDialog = {
     title: "分组管理",
-    items: [
-      { label: "重命名分组", action: "favorite-group-rename" },
-      { label: "删除分组", action: "favorite-group-delete" }
-    ],
+    items,
     selectedIndex: 0
   };
   state.modal = "menu";
@@ -928,11 +967,6 @@ export function startRenameFavoriteGroup(context: RuntimeContext): void {
   const { state, render } = context;
   const favorites = state.currentFavorites;
   if (!favorites) {
-    return;
-  }
-  if (favorites.groupId === 0) {
-    state.status = "默认分组不可重命名";
-    render();
     return;
   }
   state.inputDialog = {
