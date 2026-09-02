@@ -84,7 +84,12 @@ export function draw(state: TuiState, size: { columns: number; rows: number }, c
 
   const modalFrame = drawModalFrame(canvas.toLines(), state, width, height);
   if (modalFrame) {
-    return modalFrame;
+    // 文本类模态框（menu/input/confirm 等）不提供自己的覆盖层，
+    // 保留底层内容的图片覆盖层（如表情图片），否则弹窗时表情会消失。
+    return {
+      ...modalFrame,
+      imageOverlays: modalFrame.imageOverlays ?? imageOverlays
+    };
   }
 
   return { text: canvas.toString(), imageOverlays };
